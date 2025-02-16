@@ -1,0 +1,33 @@
+{
+  "name": "reyssapp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~4.0.0",
+    "@react-native-async-storage/async-storage": "1.23.1",
+    "@react-native-picker/picker": "^2.9.0",
+    "@react-navigation/bottom-tabs": "^7.0.3",
+    "@react-navigation/native": "^7.0.2",
+    "@react-navigation/stack": "^7.0.2",
+    "axios": "^1.7.8",
+    "expo": "^52.0.19",
+    "expo-image-picker": "^16.0.3",
+    "jwt-decode": "^4.0.0",
+    "react": "18.3.1",
+    "react-native": "^0.76.5",
+    "react-native-calendars": "^1.1307.0",
+    "react-native-vector-icons": "^10.2.0",
+    "react-native-web": "~0.19.13"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0",
+    "@react-native-community/cli": "latest"
+  },
+  "private": true
+}

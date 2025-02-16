@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Reyss",
+    "slug": "reyssApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/SL.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/SL.png",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/SL.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.smoke221.reyssApp"
+    },
+    "web": {
+      "favicon": "./assets/SL.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "488d8920-83c8-4c1b-890b-f6347a90b252"
+      }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app needs access to your photos to let you report defective products.",
+          "cameraPermission": "The app needs access to your camera to let you report defective products."
+        }
+      ]
+    ]
+  }
+}
