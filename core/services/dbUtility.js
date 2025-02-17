@@ -453,10 +453,10 @@ const setAmOrder = async (products) => {
 
 const getAllUsers = async (searchQuery) => {
   try {
-    let query = `SELECT * FROM users WHERE role = "user"`;
+    let query = "SELECT * FROM users";  // No role filter, fetch all users
 
     if (searchQuery) {
-      query += `AND name LIKE ?`;
+      query += ` WHERE name LIKE ?`;  // Apply search query if provided
     }
 
     const values = searchQuery ? [`%${searchQuery}%`] : [];
@@ -466,7 +466,7 @@ const getAllUsers = async (searchQuery) => {
     console.error("Error in getAllUsers dbUtility:", error);
     throw new Error("Failed to get all users.");
   }
-};
+}
 
 const addProduct = async (productData) => {
   try {
@@ -905,6 +905,10 @@ const insertDefaultOrder = async (
     throw new Error("Database insertion failed for default_orders");
   }
 };
+
+
+
+
 
 module.exports = {
   isUserExists,

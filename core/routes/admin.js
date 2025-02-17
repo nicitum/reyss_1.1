@@ -12,6 +12,7 @@ const {
 const { authenticate, authorizeAdmin } = require("../middleware/authenticate");
 const bcrypt = require("bcryptjs");
 const { executeQuery } = require("../dbUtils/db");
+const { updateAdminRoutes } = require("../dbUtils/db"); // Import the update function
 
 const adminRouter = express.Router();
 
@@ -60,6 +61,12 @@ adminRouter.post(
   authorizeAdmin,
   approveDefectReportController
 );
+
+
+
+
+
+
 
 adminRouter.post("/batch", async (req, res) => {
   const users = req.body;

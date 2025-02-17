@@ -21,7 +21,7 @@ const authenticate = (req, res, next) => {
 const authorizeAdmin = (req, res, next) => {
   const { userRole } = req;
 
-  if (userRole === "admin" || userRole === "super_admin") {
+  if (userRole === "admin" || userRole === "superadmin") {
     next();
   } else {
     return res.status(403).json({ msg: "Access denied: Admins only" });
