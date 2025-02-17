@@ -1,13 +1,7 @@
 import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-} from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import MaterialIcons from "react-native-vector-icons/MaterialIcons";
-import LogOutButton from "../LogoutButton";
+import LogOutButton from "../LogoutButton"; // Import the LogOutButton
 import { useNavigation } from "@react-navigation/native";
 import PasswordChangeButton from "../PasswordChangeButton";
 import ProfileModal from "./ProfileModal";
@@ -15,7 +9,7 @@ import ProfileContent from "./ProfileContent";
 import PayHereContent from "./PayHereContent";
 import PaymentsHistoryContent from "./PaymentsHistoryContent";
 
-const ProfilePage = () => {
+const ProfilePage = ({ setIsLoggedIn }) => {  // Access setIsLoggedIn here
   const navigation = useNavigation();
 
   const [modalData, setModalData] = useState({
@@ -24,7 +18,6 @@ const ProfilePage = () => {
     content: null,
   });
 
-  // Function to open the modal with specific data
   const openModal = (ContentComponent) => {
     setModalData({
       visible: true,
@@ -32,7 +25,6 @@ const ProfilePage = () => {
     });
   };
 
-  // Function to close the modal
   const closeModal = () => {
     setModalData({ ...modalData, visible: false });
   };
@@ -136,12 +128,12 @@ const ProfilePage = () => {
       />
 
       <PasswordChangeButton />
+      
+      {/* LogOutButton with passed setIsLoggedIn */}
       <LogOutButton navigation={navigation} />
-
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Designed by</Text>
-        <Text style={styles.footerText}>iSmokeTechLabs</Text>
+        {/* add design and developed by details here*/}
       </View>
     </View>
   );

@@ -1,34 +1,21 @@
 import React from "react";
-import { View, Text, TouchableOpacity, Alert, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNavigation } from "@react-navigation/native";
 
-const LogOutButton = ({ navigation }) => {
+const LogOutButton = () => {
+  const navigation = useNavigation();
+
   const handleLogout = async () => {
-    Alert.alert("Confirm Logout", "Are you sure you want to log out?", [
-      {
-        text: "Cancel",
-        onPress: () => console.log("Logout canceled"),
-        style: "cancel",
-      },
-      {
-        text: "Yes",
-        onPress: async () => {
-          try {
-            await AsyncStorage.removeItem("userAuthToken");
+    try {
+      // Remove the token from AsyncStorage
+      await AsyncStorage.removeItem("userAuthToken");
 
-            await AsyncStorage.removeItem("default");
-            await AsyncStorage.removeItem("customerId");
-            await AsyncStorage.removeItem("modifiedOrder");
-
-            Alert.alert("Logout Successful", "You have been logged out.");
-            navigation.navigate("Login");
-          } catch (error) {
-            console.error("Logout Error:", error);
-            Alert.alert("Error", "An error occurred. Please try again.");
-          }
-        },
-      },
-    ]);
+      // Navigate to Login screen after logout
+      navigation.replace("Login"); // This ensures that the user cannot go back to the previous screen
+    } catch (error) {
+      console.error("Error during logout:", error);
+    }
   };
 
   return (
@@ -40,7 +27,6 @@ const LogOutButton = ({ navigation }) => {
   );
 };
 
-// Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
