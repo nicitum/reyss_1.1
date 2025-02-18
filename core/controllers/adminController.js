@@ -3,7 +3,7 @@ const bcrypt = require("bcryptjs");
 
 exports.addUserController = async (req, res) => {
   try {
-    const { customer_id, username, name, password } = req.body;
+    const { customer_id, username, name, password,route } = req.body;
 
     if (!customer_id || !username || !name || !password) {
       return res.status(400).json({
@@ -18,6 +18,7 @@ exports.addUserController = async (req, res) => {
       customer_id,
       username,
       name,
+      route,
       password: hashedPassword,
     });
 

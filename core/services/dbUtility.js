@@ -327,8 +327,8 @@ const createTransactionForCOD = async (orderId, customer_id, amount) => {
 const addUser = async (userDetails) => {
   try {
     const insertUserQuery = `
-      INSERT INTO users (customer_id, username, name, password, created_at, updated_at)
-      VALUES (?, ?, ?, ?, UNIX_TIMESTAMP(), UNIX_TIMESTAMP())
+      INSERT INTO users (customer_id, username, name, password, route,created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, UNIX_TIMESTAMP(), UNIX_TIMESTAMP())
     `;
 
     await executeQuery(insertUserQuery, [
@@ -336,6 +336,7 @@ const addUser = async (userDetails) => {
       userDetails.username,
       userDetails.name,
       userDetails.password,
+      userDetails.route,
     ]);
   } catch (error) {
     console.error("Error addUser dbUtility", error.message);
