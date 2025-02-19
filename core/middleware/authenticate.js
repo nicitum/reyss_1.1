@@ -10,6 +10,8 @@ const authenticate = (req, res, next) => {
       } else {
         req.userID = decoded.id;
         req.userRole = decoded.role;
+
+        console.log("🔥 Auth Token:", token); 
         next();
       }
     });
@@ -28,4 +30,4 @@ const authorizeAdmin = (req, res, next) => {
   }
 };
 
-module.exports = { authenticate, authorizeAdmin };
+module.exports = { authenticate, authorizeAdmin };  

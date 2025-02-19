@@ -105,8 +105,9 @@ router.get("/get-unique-routes", async (req, res) => {
 
 
 
+// Backend: Fix duplicate assignment check
 router.post("/assign-users-to-admin", async (req, res) => {
-  const { adminId, users } = req.body;  // Receive adminId and users array from the request body
+  const { adminId, users } = req.body;
   console.log("Assigning users to admin:", adminId);
   console.log("Users to assign:", users);
 
@@ -115,7 +116,6 @@ router.post("/assign-users-to-admin", async (req, res) => {
   }
 
   try {
-    // Step 1: Check if admin exists
     const adminCheckQuery = "SELECT * FROM users WHERE id = ?";
     const admin = await executeQuery(adminCheckQuery, [adminId]);
 
@@ -123,9 +123,21 @@ router.post("/assign-users-to-admin", async (req, res) => {
       return res.status(400).json({ success: false, message: "Admin ID does not exist." });
     }
 
-    // Step 2: Insert records into admin_assign table for each user
+    // Step 2: Check if users are already assigned to another admin
+    const userIds = users.join(",");
+    const checkExistingAssignmentsQuery = `SELECT customer_id, admin_id FROM admin_assign WHERE customer_id IN (${userIds})`;
+    const existingAssignments = await executeQuery(checkExistingAssignmentsQuery);
+
+    if (existingAssignments.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Some users are already assigned to another admin.",
+        existingAssignments,
+      });
+    }
+
+    // Step 3: Insert records into admin_assign table
     const assignmentPromises = users.map(async (userId) => {
-      // Fetch the customer_id for the user from the users table
       const userCheckQuery = "SELECT customer_id FROM users WHERE id = ?";
       const user = await executeQuery(userCheckQuery, [userId]);
 
@@ -133,13 +145,9 @@ router.post("/assign-users-to-admin", async (req, res) => {
         return res.status(400).json({ success: false, message: `User ID ${userId} does not exist.` });
       }
 
-      const custId = user[0].customer_id;  // Extract the customer_id for the user
-
-      const insertQuery = `
-        INSERT INTO admin_assign (admin_id, customer_id, cust_id, assigned_date, status)
-        VALUES (?, ?, ?, NOW(), 'assigned')
-      `;
-      return executeQuery(insertQuery, [adminId, userId, custId]);  // Insert adminId, userId, and custId into the table
+      const custId = user[0].customer_id;
+      const insertQuery = `INSERT INTO admin_assign (admin_id, customer_id, cust_id, assigned_date, status) VALUES (?, ?, ?, NOW(), 'assigned')`;
+      return executeQuery(insertQuery, [adminId, userId, custId]);
     });
 
     await Promise.all(assignmentPromises);
@@ -154,7 +162,6 @@ router.post("/assign-users-to-admin", async (req, res) => {
     res.status(500).json({ success: false, message: "Error assigning users to admin." });
   }
 });
-
 
 
 

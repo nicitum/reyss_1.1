@@ -18,15 +18,12 @@
     "axios": "^1.7.8",
     "expo": "^52.0.19",
     "expo-image-picker": "^16.0.3",
-    "glob": "^9.3.5",
     "jwt-decode": "^4.0.0",
     "react": "18.3.1",
     "react-native": "^0.76.5",
     "react-native-calendars": "^1.1307.0",
     "react-native-vector-icons": "^10.2.0",
-    "react-native-web": "~0.19.13",
-    "rimraf": "^4.4.1",
-    "sudo-prompt": "^9.2.1"
+    "react-native-web": "~0.19.13"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
