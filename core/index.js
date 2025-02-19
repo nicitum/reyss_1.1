@@ -7,6 +7,7 @@ const adminRouter = require("./routes/admin");
 const generalRouter = require("./routes/generalRoutes");
 
 const adminAssignRoutes = require("./routes/adminassign"); // Import the new rout
+const action = require("./routes/action");
 
 const app = express();
 app.use(express.json());
@@ -23,6 +24,8 @@ app.use("/", transactionsRouter);
 app.use("/", adminRouter);
 app.use("/", generalRouter);
 app.use("/",adminAssignRoutes);
+
+app.use("/",action);
 
 app.get("/s", (req, res) => {
   res.send("Secured page.");

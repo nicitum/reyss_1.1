@@ -210,6 +210,8 @@ const OrdersPage = () => {
     }));
   };
 
+
+  
   const renderDefectStatus = (defectInfo, orderId) => {
     if (!defectInfo) return null;
 
@@ -258,6 +260,8 @@ const OrdersPage = () => {
     );
   };
 
+
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -286,9 +290,7 @@ const OrdersPage = () => {
               <View style={[styles.headerCell, styles.actionCell]}>
                 <Text style={styles.headerText}>Action</Text>
               </View>
-              <View style={[styles.headerCell, styles.actionCell]}>
-                <Text style={styles.headerText}>Status</Text>
-              </View>
+             
             </View>
 
             {orders.map((order) => (
@@ -324,17 +326,7 @@ const OrdersPage = () => {
                       </TouchableOpacity>
                     )}
                   </View>
-                  <View style={styles.cell}>
-                    {order.delivery_status === "pending" ? (
-                      <TouchableOpacity style={styles.updateButton}>
-                        <Text style={styles.updateButtonText}>Update</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <Text style={styles.deliveryStatusText}>
-                        {order.delivery_status.toUpperCase()}
-                      </Text>
-                    )}
-                  </View>
+                  
                 </View>
                 {order.defectInfo &&
                   renderDefectStatus(order.defectInfo, order.order_id)}

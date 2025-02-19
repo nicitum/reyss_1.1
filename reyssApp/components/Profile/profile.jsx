@@ -9,6 +9,8 @@ import ProfileContent from "./ProfileContent";
 import PayHereContent from "./PayHereContent";
 import PaymentsHistoryContent from "./PaymentsHistoryContent";
 
+import DeliveryStatusUpdate from "./DeliveryStatusUpdate";
+
 const ProfilePage = ({ setIsLoggedIn }) => {  // Access setIsLoggedIn here
   const navigation = useNavigation();
 
@@ -117,6 +119,18 @@ const ProfilePage = ({ setIsLoggedIn }) => {  // Access setIsLoggedIn here
             <Text style={styles.menuText}>Terms & conditions</Text>
           </View>
           <MaterialIcons name="keyboard-arrow-down" size={24} color="#ffcc00" />
+        </TouchableOpacity>
+
+        
+        <TouchableOpacity 
+            style={styles.menuItem} 
+            onPress={() => navigation.navigate("DeliveryStatusUpdate")}
+        >
+            <View style={styles.menuIconText}>
+                <MaterialIcons name="info-outline" size={24} color="#ffcc00" />
+                <Text style={styles.menuText}>Update Delivery Status</Text>
+            </View>
+            <MaterialIcons name="keyboard-arrow-down" size={24} color="#ffcc00" />
         </TouchableOpacity>
       </ScrollView>
 
