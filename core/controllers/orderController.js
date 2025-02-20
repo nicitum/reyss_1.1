@@ -10,15 +10,23 @@ const {
 
 const placeOrderController = async (req, res) => {
   try {
+    console.log("Received request in placeOrderController");
+    console.log("Request Headers:", req.headers);
+    console.log("Request Body:", JSON.stringify(req.body, null, 2));
+    console.log("User ID from Token:", req.userID);
+
     const customerId = req.userID;
     const { products, orderType, orderDate } = req.body;
 
-    const checkResult = await checkOrderService(
-      customerId,
-      orderType,
-      products,
-      orderDate
-    );
+    if (!customerId) {
+      return res.status(400).json({ status: "error", message: "User ID is missing" });
+    }
+
+    if (!products || products.length === 0) {
+      return res.status(400).json({ status: "error", message: "No products found" });
+    }
+
+    const checkResult = await checkOrderService(customerId, orderType, products, orderDate);
 
     if (checkResult && !checkResult.response.status) {
       throw new Error(`${checkResult.response.message}`);
@@ -31,7 +39,10 @@ const placeOrderController = async (req, res) => {
       orderDate: Math.floor(new Date(orderDate).getTime() / 1000),
     };
 
+    console.log("Processed Order Data:", JSON.stringify(orderData, null, 2));
+
     const result = await placeOrderService(customerId, orderData);
+    console.log("Final Response from placeOrderService:", result);
 
     return res.status(result.statusCode).json(result.response);
   } catch (error) {
@@ -42,6 +53,7 @@ const placeOrderController = async (req, res) => {
     });
   }
 };
+
 
 const checkOrderController = async (req, res) => {
   try {

@@ -208,19 +208,21 @@ const createOrder = async (
   }
 };
 
-// Function to insert products into the order_products table
 const addOrderProducts = async (orderId, products) => {
   try {
     const availableProducts = await getProductss();
 
     const orderProductQueries = products.map((product) => {
-      const { product_id, quantity } = product;
-      const productData = availableProducts.find((p) => p.id === product_id);
+      const productId = product.product_id || product.id; // ✅ Handle both cases
+      const { quantity } = product;
 
+      if (!productId) {
+        throw new Error(`Product with ID undefined received.`);
+      }
+
+      const productData = availableProducts.find((p) => p.id === Number(productId));
       if (!productData) {
-        throw new Error(
-          `Product with ID ${product_id} not found in available products.`
-        );
+        throw new Error(`Product with ID ${productId} not found in available products.`);
       }
 
       const price = productData.discountPrice;
@@ -232,7 +234,7 @@ const addOrderProducts = async (orderId, products) => {
         `,
         values: [
           orderId,
-          product_id,
+          productId, // ✅ Ensuring correct product ID is used
           quantity,
           price,
           productData.name,
@@ -249,6 +251,9 @@ const addOrderProducts = async (orderId, products) => {
     throw new Error("Failed to add products to the order.");
   }
 };
+
+
+
 const getDailyTransactions = async (userId, month, year) => {
   try {
     const getDailyTransactionsQuery = `
@@ -374,7 +379,7 @@ const getAllOrders = async (params) => {
     // Base query for orders, joining with users for customer details
     // Use GROUP_CONCAT to aggregate product details and SUM to calculate total amount from order_products
     let query = `
-      SELECT o.id, o.placed_on, o.delivery_status, o.total_amount AS total_amount, 
+      SELECT o.id, o.placed_on, o.delivery_status, o.total_amount AS total_amount , o.approve_status AS approve_status, 
              u.name AS customer_name,
              GROUP_CONCAT(op.category SEPARATOR ', ') AS categories,
              GROUP_CONCAT(op.name SEPARATOR ', ') AS product_names,

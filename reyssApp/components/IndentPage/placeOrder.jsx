@@ -15,6 +15,9 @@ import OrderModal from "../general/orderModal";
 import SearchProductModal from "./nestedPage/searchProductModal";
 import { ipAddress } from "../../urls";
 import { checkTokenAndRedirect } from "../../services/auth";
+import { jwtDecode } from "jwt-decode";
+
+
 
 const PlaceOrderPage = ({ route }) => {
   const { order, selectedDate, shift } = route.params;
@@ -37,17 +40,73 @@ const PlaceOrderPage = ({ route }) => {
 
   useEffect(() => {
     const fetchDefaultOrder = async () => {
-      const storedOrder = await AsyncStorage.getItem("default");
-      if (storedOrder) {
-        setDefaultOrder(JSON.parse(storedOrder));
-        // Only show modal if ordering is not disabled
-        setShowModal(!isOrderingDisabled);
+      console.log("🗄 Retrieving default order from AsyncStorage...");
+  
+      try {
+        const storedOrder = await AsyncStorage.getItem("default");
+  
+        if (storedOrder) {
+          const parsedOrder = JSON.parse(storedOrder);
+          
+          setDefaultOrder(parsedOrder);
+        } else {
+          console.log("⚠️ No default order found in AsyncStorage. Fetching from API...");
+        }
+  
+        // Fetch latest order from API
+        const storedToken = await AsyncStorage.getItem("userAuthToken");
+        if (!storedToken) {
+          console.log("❌ No token found.");
+          return;
+        }
+  
+        const decodedToken = jwtDecode(storedToken);
+        const customerId = decodedToken.id;
+  
+       
+  
+        const response = await fetch(`http://localhost:8090/get-default-order/${customerId}`);
+        const data = await response.json();
+  
+        console.log("✅ API Response:", data);
+  
+        if (data.status && data.default_orders.length > 0) {
+          console.log("🔄 Transforming API response to match stored format...");
+  
+          const transformedOrder = {
+            order: {
+              customer_id: customerId,
+              total_amount: data.default_orders[0].total_amount
+            },
+            products: data.default_orders.map(order => ({
+              id: order.product_id,
+              quantity: order.quantity,
+              price: order.total_amount, // Assuming total amount is price * quantity
+              name: order.product_name,
+              category: "Unknown" // API does not provide category, setting default
+            }))
+          };
+  
+         
+          await AsyncStorage.setItem("default", JSON.stringify(transformedOrder));
+  
+          setDefaultOrder(transformedOrder);
+          setShowModal(!isOrderingDisabled);
+        } else {
+          console.log("⚠️ No default order found in API.");
+        }
+      } catch (error) {
+        console.error("❌ Error fetching default order:", error);
       }
+  
       setLoading(false);
     };
-
+  
     fetchDefaultOrder();
   }, [isOrderingDisabled]);
+  
+  
+  
 
   useEffect(() => {
     const initializeOrder = async () => {
@@ -240,6 +299,11 @@ const PlaceOrderPage = ({ route }) => {
       }
       const orderDate = new Date(selectedDate).toISOString();
 
+      if (!defaultOrder.products || defaultOrder.products.length === 0) {
+        Alert.alert("Error", "No products selected. Please add items to your order.");
+        return;
+      }
+
       const options = {
         method: "POST",
         url: `http://${ipAddress}:8090/place`,
@@ -254,9 +318,13 @@ const PlaceOrderPage = ({ route }) => {
         },
       };
 
+      // Log request data before sending it
+      console.log("Request Payload:", JSON.stringify(options, null, 2));
+
       const response = await axios(options);
+      console.log("Response Data:", response.data);
+
       if (response.status === 200) {
-        // Clear the modified order after successful submission
         await AsyncStorage.removeItem("modifiedOrder");
 
         Alert.alert("Success", "Order has been submitted successfully.");
@@ -267,7 +335,7 @@ const PlaceOrderPage = ({ route }) => {
     } catch (error) {
       console.error("Submit error:", error);
       if (error.response) {
-        console.log(error.response.data.message);
+        console.log("Response Error Data:", error.response.data);
         Alert.alert(
           "Error",
           error.response.data.message || "Server error occurred."
@@ -281,6 +349,7 @@ const PlaceOrderPage = ({ route }) => {
       }
     }
   };
+
 
   const handleSubmitEdit = async () => {
     try {
@@ -340,6 +409,22 @@ const PlaceOrderPage = ({ route }) => {
         Alert.alert("Error", error.message || "An error occurred.");
       }
     }
+  };
+
+  const ConfirmModal = ({ isVisible, onConfirm, onCancel }) => {
+    return (
+      <Modal visible={isVisible} transparent animationType="slide">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalText}>Do you want to place this order?</Text>
+            <View style={styles.buttonContainer}>
+              <Button title="Cancel" onPress={onCancel} color="red" />
+              <Button title="Place Order" onPress={onConfirm} color="green" />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
   };
 
   if (loading) {
@@ -429,6 +514,29 @@ const styles = StyleSheet.create({
   },
   searchButton: {
     padding: 10,
+  },
+
+  modalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    padding: 20,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  modalText: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 15,
+  },
+  buttonContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "80%",
   },
 });
 

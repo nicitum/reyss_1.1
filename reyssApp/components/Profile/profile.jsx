@@ -90,17 +90,16 @@ const ProfilePage = ({ setIsLoggedIn }) => {  // Access setIsLoggedIn here
           <MaterialIcons name="keyboard-arrow-down" size={24} color="#ffcc00" />
         </TouchableOpacity>
 
-        {/* Monthly Report */}
-        <TouchableOpacity style={styles.menuItem}>
-          <View style={styles.menuIconText}>
-            <MaterialIcons
-              name="insert-chart-outlined"
-              size={24}
-              color="#ffcc00"
-            />
-            <Text style={styles.menuText}>Monthly Report</Text>
-          </View>
-          <MaterialIcons name="keyboard-arrow-down" size={24} color="#ffcc00" />
+  
+        <TouchableOpacity 
+            style={styles.menuItem} 
+            onPress={() => navigation.navigate("DeliveryStatusUpdate")}
+        >
+            <View style={styles.menuIconText}>
+                <MaterialIcons name="info-outline" size={24} color="#ffcc00" />
+                <Text style={styles.menuText}>Update Delivery Status</Text>
+            </View>
+            <MaterialIcons name="keyboard-arrow-down" size={24} color="#ffcc00" />
         </TouchableOpacity>
 
         {/* Privacy Policy */}
@@ -108,6 +107,18 @@ const ProfilePage = ({ setIsLoggedIn }) => {  // Access setIsLoggedIn here
           <View style={styles.menuIconText}>
             <MaterialIcons name="security" size={24} color="#ffcc00" />
             <Text style={styles.menuText}>Privacy Policy</Text>
+          </View>
+          <MaterialIcons name="keyboard-arrow-down" size={24} color="#ffcc00" />
+        </TouchableOpacity>
+
+
+          {/* Terms & Conditions */}
+        <TouchableOpacity style={styles.menuItem}
+        onPress={() => navigation.navigate("DefaultProductsUpdate")}
+        >
+          <View style={styles.menuIconText}>
+            <MaterialIcons name="info-outline" size={24} color="#ffcc00" />
+            <Text style={styles.menuText}>Update Default Order Products</Text>
           </View>
           <MaterialIcons name="keyboard-arrow-down" size={24} color="#ffcc00" />
         </TouchableOpacity>
@@ -122,16 +133,7 @@ const ProfilePage = ({ setIsLoggedIn }) => {  // Access setIsLoggedIn here
         </TouchableOpacity>
 
         
-        <TouchableOpacity 
-            style={styles.menuItem} 
-            onPress={() => navigation.navigate("DeliveryStatusUpdate")}
-        >
-            <View style={styles.menuIconText}>
-                <MaterialIcons name="info-outline" size={24} color="#ffcc00" />
-                <Text style={styles.menuText}>Update Delivery Status</Text>
-            </View>
-            <MaterialIcons name="keyboard-arrow-down" size={24} color="#ffcc00" />
-        </TouchableOpacity>
+        
       </ScrollView>
 
       {/* Reusable Modal */}

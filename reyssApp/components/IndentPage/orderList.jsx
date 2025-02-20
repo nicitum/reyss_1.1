@@ -25,7 +25,7 @@ const OrdersList = ({ amOrder, pmOrder, selectedDate, navigation }) => {
     const currentHour = moment().hour();
 
     if (shift === "AM") {
-      if (currentHour >= 6 && currentHour < 8) {
+      if (currentHour >= 6 && currentHour < 12) {
         navigation.navigate("PlaceOrderPage", { order, selectedDate, shift });
       } else {
         showToast("AM orders allowed only between 6 AM - 8 AM. Contact admin.");

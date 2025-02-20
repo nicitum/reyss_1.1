@@ -20,6 +20,8 @@ const placeOrderService = async (
 ) => {
   try {
     // Create the order entry
+   
+
     const placedOn = orderDate;
     const currentEpoch = Math.floor(Date.now() / 1000);
     const createdAt = currentEpoch;
@@ -33,6 +35,9 @@ const placeOrderService = async (
       createdAt,
       updatedAt
     );
+
+   
+
 
     // Add products to the order
     await addOrderProducts(orderId, products);
@@ -62,38 +67,23 @@ const placeOrderService = async (
   }
 };
 
-const checkOrderService = async (
-  customerId,
-  orderType,
-  products,
-  orderDate
-) => {
+const checkOrderService = async (customerId, orderType, products, orderDate) => {
   try {
     // Check if the user exists
     const isUser = await isUserExists(customerId);
     if (!isUser) {
       return {
         statusCode: 400,
-        response: {
-          status: false,
-          message: "User doesn't exist.",
-        },
+        response: { status: false, message: "User doesn't exist." },
       };
     }
 
     // Check if an order for the same type and date already exists for this customer
-    const existingOrder = await checkExistingOrder(
-      customerId,
-      orderDate,
-      orderType
-    );
+    const existingOrder = await checkExistingOrder(customerId, orderDate, orderType);
     if (existingOrder) {
       return {
         statusCode: 400,
-        response: {
-          status: false,
-          message: `Order already exists for ${orderType} on this date.`,
-        },
+        response: { status: false, message: `Order already exists for ${orderType} on this date.` },
       };
     }
 
@@ -103,18 +93,29 @@ const checkOrderService = async (
     const dbProducts = await getProductss();
 
     for (const product of products) {
-      console.log(`🪵 → product:`, product);
-      const { product_id, quantity } = product;
-      const productData = dbProducts.find((p) => p.id === product_id);
+      console.log(`🪵 → Received product:`, product);
 
+      // Ensure we extract a valid product ID
+      const productId = product.product_id ?? product.id; // Handles both cases
+      const { quantity } = product;
+
+      if (!productId) {
+        console.warn(`🚨 Missing product ID for item:`, product);
+        invalidProducts.push("(Missing ID)");
+        continue;
+      }
+
+      const productData = dbProducts.find((p) => p.id === Number(productId));
       if (!productData) {
-        invalidProducts.push(product_id);
+        console.warn(`🚨 Product not found in DB:`, productId);
+        invalidProducts.push(productId);
         continue;
       }
 
       const parsedQuantity = parseInt(quantity, 10);
       if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
-        invalidProducts.push(product_id);
+        console.warn(`🚨 Invalid quantity (${quantity}) for product ID: ${productId}`);
+        invalidProducts.push(productId);
         continue;
       }
 
@@ -123,35 +124,27 @@ const checkOrderService = async (
 
     // If there are any invalid products, return an error
     if (invalidProducts.length > 0) {
+      console.error(`🚨 Invalid products found: ${invalidProducts.join(", ")}`);
       return {
         statusCode: 400,
-        response: {
-          status: false,
-          message: `Invalid products found: ${invalidProducts.join(", ")}`,
-        },
+        response: { status: false, message: `Invalid products found: ${invalidProducts.join(", ")}` },
       };
     }
 
     // Return valid order data
     return {
       statusCode: 200,
-      response: {
-        status: true,
-        message: "Valid order, can proceed further.",
-        data: { customerId, orderType, products, totalAmount },
-      },
+      response: { status: true, message: "Valid order, can proceed further.", data: { customerId, orderType, products, totalAmount } },
     };
   } catch (error) {
-    console.error("Error in checkOrderService:", error);
+    console.error("❌ Error in checkOrderService:", error);
     return {
       statusCode: 500,
-      response: {
-        status: false,
-        message: "Internal server error.",
-      },
+      response: { status: false, message: "Internal server error." },
     };
   }
 };
+
 
 const orderHistoryService = async (customerId) => {
   try {

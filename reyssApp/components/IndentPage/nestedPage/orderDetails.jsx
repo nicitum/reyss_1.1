@@ -2,7 +2,14 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 
 const OrderDetails = ({ orderDetails, selectedDate, shift, isEditable }) => {
-  const total_amount = orderDetails.order.total_amount;
+  // ✅ Safe way to access total_amount
+  const total_amount = orderDetails?.order?.total_amount || 0;
+
+  // ✅ Prevent rendering if orderDetails is undefined
+  if (!orderDetails || !orderDetails.order) {
+    return <Text style={styles.orderText}>Loading order details...</Text>;
+  }
+
   return (
     <View style={styles.orderInfoContainer}>
       {/* Hide Order ID when in editable mode */}

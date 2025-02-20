@@ -100,6 +100,126 @@ router.get("/get-orders/:customer_id", async (req, res) => {
 });
 
 
+
+router.post("/update-default-order", async (req, res) => {
+    try {
+      const orders = req.body;
+  
+      if (!Array.isArray(orders) || orders.length === 0) {
+        return res.status(400).json({ message: "Invalid request format. Expected an array of objects." });
+      }
+  
+      const createdAt = Math.floor(Date.now() / 1000);
+      const updatedAt = createdAt;
+  
+      // Check for duplicate products for the same customer
+      const existingProductsQuery = `
+        SELECT product_id FROM default_orders WHERE customer_id = ?;
+      `;
+  
+      for (const order of orders) {
+        const existingProducts = await executeQuery(existingProductsQuery, [order.customer_id]);
+  
+        const existingProductIds = new Set(existingProducts.map((p) => p.product_id));
+  
+        if (existingProductIds.has(order.product_id)) {
+          return res.status(400).json({ message: `Product ${order.product_id} is already in the default order.` });
+        }
+      }
+  
+      // Proceed with insertion if no duplicates
+      const values = orders.map(order => [order.customer_id, order.product_id, order.quantity, createdAt, updatedAt]);
+  
+      const query = `
+        INSERT INTO default_orders (customer_id, product_id, quantity, created_at, updated_at)
+        VALUES ?;
+      `;
+  
+      const result = await executeQuery(query, [values]);
+  
+      if (result.affectedRows > 0) {
+        return res.status(201).json({ message: "Default orders updated successfully" });
+      } else {
+        return res.status(500).json({ message: "Failed to update default orders" });
+      }
+  
+    } catch (error) {
+      console.error("Error updating default order:", error);
+      res.status(500).json({ message: "Internal server error." });
+    }
+  });
+  
+
+router.get("/get-default-order/:customer_id", async (req, res) => {
+    try {
+        const { customer_id } = req.params;
+
+        if (!customer_id) {
+            return res.status(400).json({ status: false, message: "Customer ID is required" });
+        }
+
+        // Fetch default orders + calculate total amount
+        const fetchQuery = `
+            SELECT d.id, 
+                   d.product_id, 
+                   p.name AS product_name, 
+                   d.quantity, 
+                   (d.quantity * p.price) AS total_amount
+            FROM default_orders d
+            JOIN products p ON d.product_id = p.id
+            WHERE d.customer_id = ? 
+            ORDER BY d.id DESC;
+        `;
+
+        const fetchResult = await executeQuery(fetchQuery, [customer_id]);
+
+        console.log("✅ Default Orders Fetched:", fetchResult); // Debugging log
+
+        if (fetchResult.length > 0) {
+            return res.json({ status: true, default_orders: fetchResult });
+        } else {
+            return res.json({ status: true, default_orders: [] });
+        }
+    } catch (error) {
+        console.error("❌ Error fetching default orders:", error);
+        res.status(500).json({ status: false, message: "Internal Server Error" });
+    }
+});
+
+
+
+// API to fetch orders for a specific admin with total indent amount
+router.get("/get-admin-orders/:admin_id", async (req, res) => {
+    try {
+        const { admin_id } = req.params;
+
+        if (!admin_id) {
+            return res.status(400).json({ success: false, message: "Admin ID is required" });
+        }
+
+        // Updated SQL Query to fetch orders along with total indent amount
+        const query = `
+            SELECT o.*, 
+                   SUM(op.price * op.quantity) AS amount 
+            FROM orders o
+            JOIN admin_assign a ON o.customer_id = a.cust_id
+            LEFT JOIN order_products op ON o.id = op.order_id
+            WHERE a.admin_id = ?
+            GROUP BY o.id;
+        `;
+
+        const orders = await executeQuery(query, [admin_id]);
+
+        res.json({ success: true, orders });
+
+    } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+});
+
+
+
 module.exports = router;
 
 

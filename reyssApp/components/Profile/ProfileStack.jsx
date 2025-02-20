@@ -2,7 +2,8 @@ import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import ProfilePage from './profile';
 import OrdersPage from './OrdersPage';
-import DeliveryStatusUpdate from './DeliveryStatusUpdate'; // Import the new screen
+import DeliveryStatusUpdate from './DeliveryStatusUpdate';
+import DefaultProductsUpdate from './DefaultProductsUpdate';
 
 const Stack = createStackNavigator();
 
@@ -24,7 +25,14 @@ const ProfileStack = () => {
         component={DeliveryStatusUpdate} 
         options={{ title: 'Update Delivery Status' }} 
       />
+
+      <Stack.Screen 
+        name="DefaultProductsUpdate" 
+        component={DefaultProductsUpdate} 
+        options={{ title: 'Update Default Order Products' }} 
+      />
     </Stack.Navigator>
+    
   );
 };
 
