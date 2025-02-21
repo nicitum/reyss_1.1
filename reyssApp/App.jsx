@@ -8,6 +8,9 @@ import LoadingIndicator from "./components/general/Loader";
 import { jwtDecode } from "jwt-decode";
 import Toast from "react-native-toast-message";
 const Stack = createStackNavigator();
+import { LogBox } from "react-native";
+LogBox.ignoreAllLogs(); // Completely hide all warnings
+
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(null); // null here means we're still checking authentication.

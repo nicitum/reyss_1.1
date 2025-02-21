@@ -49,25 +49,22 @@ const HomePage = () => {
     return true; // This prevents the default back button behavior
   };
 
-  // UseFocusEffect to handle back button only when HomePage is in focus
   useFocusEffect(
     React.useCallback(() => {
+      const fetchDataAsync = async () => {
+        await fetchData();
+      };
+      fetchDataAsync();
+  
+      // Back button handler
       BackHandler.addEventListener("hardwareBackPress", handleBackButton);
-
+  
       return () => {
-        // Cleanup listener on component unmount
         BackHandler.removeEventListener("hardwareBackPress", handleBackButton);
       };
     }, [])
   );
-
-  // Fetch data on component mount
-  useEffect(() => {
-    const fetchDataAsync = async () => {
-      await fetchData();
-    };
-    fetchDataAsync();
-  }, []);
+  
 
   // Fetch data and update state
   const fetchData = async () => {

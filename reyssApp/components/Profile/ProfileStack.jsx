@@ -3,7 +3,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import ProfilePage from './profile';
 import OrdersPage from './OrdersPage';
 import DeliveryStatusUpdate from './DeliveryStatusUpdate';
-import DefaultProductsUpdate from './DefaultProductsUpdate';
+
 
 const Stack = createStackNavigator();
 
@@ -26,11 +26,6 @@ const ProfileStack = () => {
         options={{ title: 'Update Delivery Status' }} 
       />
 
-      <Stack.Screen 
-        name="DefaultProductsUpdate" 
-        component={DefaultProductsUpdate} 
-        options={{ title: 'Update Default Order Products' }} 
-      />
     </Stack.Navigator>
     
   );

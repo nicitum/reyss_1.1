@@ -100,54 +100,62 @@ router.get("/get-orders/:customer_id", async (req, res) => {
 });
 
 
-
 router.post("/update-default-order", async (req, res) => {
     try {
-      const orders = req.body;
-  
-      if (!Array.isArray(orders) || orders.length === 0) {
-        return res.status(400).json({ message: "Invalid request format. Expected an array of objects." });
-      }
-  
-      const createdAt = Math.floor(Date.now() / 1000);
-      const updatedAt = createdAt;
-  
-      // Check for duplicate products for the same customer
-      const existingProductsQuery = `
-        SELECT product_id FROM default_orders WHERE customer_id = ?;
-      `;
-  
-      for (const order of orders) {
-        const existingProducts = await executeQuery(existingProductsQuery, [order.customer_id]);
-  
-        const existingProductIds = new Set(existingProducts.map((p) => p.product_id));
-  
-        if (existingProductIds.has(order.product_id)) {
-          return res.status(400).json({ message: `Product ${order.product_id} is already in the default order.` });
+        const orders = req.body;
+
+        if (!Array.isArray(orders)) {
+            return res.status(400).json({ message: "Invalid request format. Expected an array of objects." });
         }
-      }
-  
-      // Proceed with insertion if no duplicates
-      const values = orders.map(order => [order.customer_id, order.product_id, order.quantity, createdAt, updatedAt]);
-  
-      const query = `
-        INSERT INTO default_orders (customer_id, product_id, quantity, created_at, updated_at)
-        VALUES ?;
-      `;
-  
-      const result = await executeQuery(query, [values]);
-  
-      if (result.affectedRows > 0) {
-        return res.status(201).json({ message: "Default orders updated successfully" });
-      } else {
-        return res.status(500).json({ message: "Failed to update default orders" });
-      }
-  
+
+        // Get customer_id (If no products, use first product's customer_id)
+        const customerId = orders.length > 0 ? orders[0].customer_id : req.body.customer_id;
+
+        if (!customerId) {
+            return res.status(400).json({ message: "Missing customer ID in request." });
+        }
+
+        // 🔴 Always delete existing orders first
+        const deleteQuery = `DELETE FROM default_orders WHERE customer_id = ?`;
+        await executeQuery(deleteQuery, [customerId]);
+
+        // 🛑 If no new products, return after deletion
+        if (orders.length === 0) {
+            return res.status(200).json({ message: "All default orders cleared successfully." });
+        }
+
+        const createdAt = Math.floor(Date.now() / 1000);
+        const updatedAt = createdAt;
+
+        // Prepare new values for insertion
+        const values = orders.map(order => [
+            order.customer_id,
+            order.product_id,
+            order.quantity,
+            createdAt,
+            updatedAt
+        ]);
+
+        const insertQuery = `
+            INSERT INTO default_orders (customer_id, product_id, quantity, created_at, updated_at)
+            VALUES ?;
+        `;
+
+        const result = await executeQuery(insertQuery, [values]);
+
+        if (result.affectedRows > 0) {
+            return res.status(201).json({ message: "Default orders updated successfully." });
+        } else {
+            return res.status(500).json({ message: "Failed to update default orders." });
+        }
+
     } catch (error) {
-      console.error("Error updating default order:", error);
-      res.status(500).json({ message: "Internal server error." });
+        console.error("Error updating default order:", error);
+        res.status(500).json({ message: "Internal server error." });
     }
-  });
+});
+
+
   
 
 router.get("/get-default-order/:customer_id", async (req, res) => {
