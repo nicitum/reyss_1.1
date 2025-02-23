@@ -90,6 +90,17 @@ const ProfilePage = ({ setIsLoggedIn }) => {  // Access setIsLoggedIn here
           <MaterialIcons name="keyboard-arrow-down" size={24} color="#ffcc00" />
         </TouchableOpacity>
 
+        <TouchableOpacity 
+            style={styles.menuItem} 
+            onPress={() => navigation.navigate("UpdateOrders")}
+        >
+            <View style={styles.menuIconText}>
+                <MaterialIcons name="info-outline" size={24} color="#ffcc00" />
+                <Text style={styles.menuText}>Update Orders</Text>
+            </View>
+            <MaterialIcons name="keyboard-arrow-down" size={24} color="#ffcc00" />
+        </TouchableOpacity>
+
   
         <TouchableOpacity 
             style={styles.menuItem} 

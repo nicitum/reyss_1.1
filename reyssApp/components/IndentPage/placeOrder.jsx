@@ -4,27 +4,26 @@ import { useNavigation } from "@react-navigation/native";
 import moment from "moment";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-import Icon from "react-native-vector-icons/MaterialIcons";
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import LoadingIndicator from "../general/Loader";
 import ErrorMessage from "../general/errorMessage";
 import BackButton from "../general/backButton";
 import SubmitButton from "./nestedPage/submitButton";
 import SearchProductModal from "./nestedPage/searchProductModal";
-import OrderDetails from "./nestedPage/orderDetails"; // Ensure correct path if you moved it
-import OrderProductsList from "./nestedPage/orderProductsList"; // Ensure correct path if you moved it
+import OrderDetails from "./nestedPage/orderDetails";
+import OrderProductsList from "./nestedPage/orderProductsList";
 import { ipAddress } from "../../urls";
 import { checkTokenAndRedirect } from "../../services/auth";
-import { jwtDecode } from "jwt-decode";
+import { jwtDecode } from 'jwt-decode';
+import Toast from 'react-native-toast-message'; // Import Toast
 
 const PlaceOrderPage = ({ route }) => {
     const { order, selectedDate, shift } = route.params;
     const [orderDetails, setOrderDetails] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [defaultOrder, setDefaultOrder] = useState([]);
     const [showSearchModal, setShowSearchModal] = useState(false);
     const navigation = useNavigation();
-    const [editable, setEditable] = useState(true);
     const [updatedQuantities, setUpdatedQuantities] = useState({});
     const [confirmModalVisible, setConfirmModalVisible] = useState(false);
 
@@ -33,66 +32,13 @@ const PlaceOrderPage = ({ route }) => {
     const hasExistingOrder = orderDetails !== null;
     const isOrderingDisabled = false;
 
-    useEffect(() => {
-        const fetchDefaultOrder = async () => {
-            console.log("🗄 Retrieving default order from AsyncStorage...");
-            try {
-                const storedOrder = await AsyncStorage.getItem("default");
-                if (storedOrder) {
-                    const parsedOrder = JSON.parse(storedOrder);
-                    setDefaultOrder(parsedOrder);
-                } else {
-                    console.log("⚠️ No default order in AsyncStorage. Fetching from API...");
-                }
-
-                const storedToken = await AsyncStorage.getItem("userAuthToken");
-                if (!storedToken) {
-                    console.log("❌ No token found.");
-                    return;
-                }
-                const decodedToken = jwtDecode(storedToken);
-                const customerId = decodedToken.id;
-
-                const response = await fetch(`http://${ipAddress}:8090/get-default-order/${customerId}`);
-                const data = await response.json();
-
-                console.log("✅ API Response:", data);
-
-                if (data.status && data.default_orders.length > 0) {
-                    console.log("🔄 Transforming API response...");
-                    const transformedOrder = {
-                        order: {
-                            customer_id: customerId,
-                            total_amount: data.default_orders[0].total_amount
-                        },
-                        products: data.default_orders.map(order => ({
-                            id: order.product_id,
-                            quantity: order.quantity,
-                            price: order.total_amount,
-                            name: order.product_name,
-                            category: "Unknown"
-                        }))
-                    };
-                    await AsyncStorage.setItem("default", JSON.stringify(transformedOrder));
-                    setDefaultOrder(transformedOrder);
-                } else {
-                    console.log("⚠️ No default order from API.");
-                }
-            } catch (error) {
-                console.error("❌ Error fetching default order:", error);
-                setError("Failed to load default order.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchDefaultOrder();
-    }, [isOrderingDisabled]);
 
     useEffect(() => {
         const initializeOrder = async () => {
-            if (order) {
+            if (order && order.orderId) {
                 await fetchOrderDetails(order.orderId);
+            } else if (selectedDate && shift) {
+                await fetchOrderDetails(null, selectedDate, shift);
             } else {
                 if (isPastDate) {
                     showAlertAndGoBack();
@@ -100,37 +46,105 @@ const PlaceOrderPage = ({ route }) => {
             }
         };
         initializeOrder();
-    }, [order]);
+    }, [order, selectedDate, shift]); // **Added 'selectedDate' to dependency array**
 
-    const fetchOrderDetails = async (orderId) => {
+
+    const fetchOrderDetails = async (orderId = null, date = null, shiftType = null) => {
+        setLoading(true);
+        setError(null);
+
         try {
             const userAuthToken = await checkTokenAndRedirect(navigation);
             if (!userAuthToken) {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Authentication Error',
+                    text2: "Authorization token missing."
+                });
                 setError("Authorization token missing.");
                 setLoading(false);
                 return;
             }
 
-            const response = await fetch(`http://${ipAddress}:8090/order?orderId=${orderId}`, {
-                method: "GET",
-                headers: {
-                    Authorization: `Bearer ${userAuthToken}`,
-                    "Content-Type": "application/json",
-                },
-            });
+            const decodedToken = jwtDecode(userAuthToken);
+            const customerId = decodedToken.id;
 
-            if (!response.ok) {
-                throw new Error("Failed to fetch order details");
+            let fetchedOrderDetails = null;
+
+            if (orderId) {
+                // ... (orderId fetching - no changes here - this is for viewing existing orders by ID) ...
+            } else if (date && shiftType) {
+                console.log("Selected Date Parameter:", selectedDate); // Log selectedDate
+                console.log("Date Parameter:", date);         // Log date parameter (should be same as selectedDate)
+
+                const formattedPreviousDate = moment(selectedDate).subtract(1, 'day').format("YYYY-DD-MM");
+                console.log("Formatted Previous Date:", formattedPreviousDate); // Log formattedPreviousDate
+
+                const apiUrl = `http://${ipAddress}:8090/order-by-date-shift?orderDate=${formattedPreviousDate}&orderType=${shiftType}&customerId=${customerId}`;
+                console.log("API URL:", apiUrl); // Log the complete API URL
+
+                const orderResponse = await fetch(apiUrl, {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${userAuthToken}`,
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                if (!orderResponse.ok) {
+                    console.log("No order found for previous day, initializing with empty order");
+                    fetchedOrderDetails = { order: {}, products: [] };
+                } else {
+                    const orderData = await orderResponse.json();
+                    console.log("Previous day order details:", orderData);
+
+                    try {
+                        const productsResponse = await fetch(`http://${ipAddress}:8090/order-products?orderId=${orderData.id}`, {
+                            method: "GET",
+                            headers: {
+                                Authorization: `Bearer ${userAuthToken}`,
+                                "Content-Type": "application/json",
+                            },
+                        });
+
+                        if (!productsResponse.ok) {
+                            throw new Error(`Failed to fetch product details: ${productsResponse.statusText}`);
+                        }
+                        const productsData = await productsResponse.json();
+                        console.log("Previous day order product details:", productsData);
+                        fetchedOrderDetails = {
+                            order: orderData,
+                            products: productsData,
+                        };
+                    } catch (productFetchError) {
+                        console.error("Error fetching product details:", productFetchError);
+                        Toast.show({
+                            type: 'error',
+                            text1: 'Fetch Error',
+                            text2: "Failed to fetch product details for previous order."
+                        });
+                        setError("Failed to fetch product details for previous order.");
+                        setLoading(false);
+                        return;
+                    }
+                }
             }
 
-            const data = await response.json();
-            setOrderDetails(data);
+            setOrderDetails(fetchedOrderDetails);
+
         } catch (err) {
+            console.error("Error fetching order details:", err.message);
+            Toast.show({
+                type: 'error',
+                text1: 'Fetch Error',
+                text2: err.message || "Error fetching order details"
+            });
             setError(err.message || "Error fetching order details");
         } finally {
             setLoading(false);
         }
     };
+
 
     const showAlertAndGoBack = () => {
         let message = "There are no orders for this date.";
@@ -151,12 +165,15 @@ const PlaceOrderPage = ({ route }) => {
 
     const handleAddProduct = async (product) => {
         try {
-            const storedOrder = await AsyncStorage.getItem("modifiedOrder");
-            const currentProducts = storedOrder ? JSON.parse(storedOrder) : defaultOrder?.products || [];
+            const currentProducts = orderDetails?.products || [];
             const isDuplicate = currentProducts.some((existingProduct) => existingProduct.product_id === product.id);
 
             if (isDuplicate) {
-                Alert.alert("Item Exists", "Please increase the quantity.");
+                Toast.show({
+                    type: 'info',
+                    text1: 'Item Exists',
+                    text2: "Please increase the quantity in the list."
+                });
                 return;
             }
 
@@ -169,36 +186,73 @@ const PlaceOrderPage = ({ route }) => {
             };
 
             const updatedProducts = [...currentProducts, newProduct];
-            setDefaultOrder({ ...defaultOrder, products: updatedProducts });
-            await AsyncStorage.setItem("modifiedOrder", JSON.stringify(updatedProducts));
+            setOrderDetails({ ...orderDetails, products: updatedProducts });
             setShowSearchModal(false);
+            Toast.show({
+                type: 'success',
+                text1: 'Product Added',
+                text2: `${product.name} has been added to the order.`
+            });
         } catch (error) {
             console.error("Error adding product:", error);
-            Alert.alert("Error", "Could not add product.");
+            Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: "Could not add product."
+            });
+            Alert.alert("Error", "Could not add product."); // Fallback if toast fails
         }
     };
 
     const handleQuantityChange = async (text, index) => {
         try {
-            const storedOrder = await AsyncStorage.getItem("modifiedOrder");
-            const currentProducts = storedOrder ? JSON.parse(storedOrder) : defaultOrder?.products || [];
+            const currentProducts = orderDetails?.products || [];
             const updatedProducts = [...currentProducts];
             const parsedQuantity = parseInt(text, 10);
+
+            if (parsedQuantity < 0) {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Invalid Quantity',
+                    text2: "Quantity cannot be negative."
+                });
+                return;
+            }
 
             updatedProducts[index] = {
                 ...updatedProducts[index],
                 quantity: isNaN(parsedQuantity) ? 0 : parsedQuantity,
             };
 
-            setDefaultOrder({ ...defaultOrder, products: updatedProducts });
-            await AsyncStorage.setItem("modifiedOrder", JSON.stringify(updatedProducts));
+            setOrderDetails({ ...orderDetails, products: updatedProducts });
         } catch (error) {
             console.error("Error updating quantity:", error);
-            Alert.alert("Error", "Could not update quantity.");
+            Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: "Could not update quantity."
+            });
+            Alert.alert("Error", "Could not update quantity."); // Fallback
         }
     };
 
     const handleSubmitEdit = async () => {
+        let hasInvalidQuantity = false;
+        for (const product of orderDetails.products) {
+            if (product.quantity <= 0) {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Invalid Quantity',
+                    text2: "Quantity must be greater than zero for all products to place order."
+                });
+                hasInvalidQuantity = true;
+                break;
+            }
+        }
+
+        if (hasInvalidQuantity) {
+            return; // Prevent submission if invalid quantity
+        }
         setConfirmModalVisible(true);
     };
 
@@ -208,13 +262,15 @@ const PlaceOrderPage = ({ route }) => {
         try {
             const userAuthToken = await checkTokenAndRedirect(navigation);
             if (!userAuthToken) {
-                Alert.alert("Error", "Auth token missing.");
+                Toast.show({
+                    type: 'error',
+                    text1: 'Authentication Error',
+                    text2: "Auth token missing."
+                });
                 return;
             }
 
-            const modified = await AsyncStorage.getItem("modifiedOrder");
-            const data = JSON.parse(modified);
-            const transformedData = data.map((item) => ({
+            const transformedData = orderDetails.products.map((item) => ({
                 product_id: item.product_id,
                 quantity: item.quantity,
             }));
@@ -236,9 +292,13 @@ const PlaceOrderPage = ({ route }) => {
 
             const response = await axios(options);
             if (response.status === 200) {
-                await AsyncStorage.removeItem("modifiedOrder");
-                Alert.alert("Success", "Order submitted.");
-                navigation.navigate("IndentPage");
+                Toast.show({
+                    type: 'success',
+                    text1: 'Order Placed',
+                    text2: "Order Placed successfully!"
+                });
+                //navigation.navigate("IndentPage");
+                navigation.navigate("IndentPage", { orderPlacedSuccessfully: true }); // ADDED parameter
             } else {
                 throw new Error("Unexpected response status.");
             }
@@ -246,13 +306,28 @@ const PlaceOrderPage = ({ route }) => {
             console.error("Submit error:", error);
             if (error.response) {
                 console.log(error.response.data.message);
-                Alert.alert("Failure", error.response.data.message || "Server error.");
+                Toast.show({
+                    type: 'error',
+                    text1: 'Order Submission Failed',
+                    text2: error.response.data.message || "Server error."
+                });
+                Alert.alert("Failure", error.response.data.message || "Server error."); // Fallback
             } else if (error.request) {
                 console.log("Network error:", error.request);
-                Alert.alert("Error", "Network error, check connection.");
+                Toast.show({
+                    type: 'error',
+                    text1: 'Network Error',
+                    text2: "Network error, check connection."
+                });
+                Alert.alert("Error", "Network error, check connection."); // Fallback
             } else {
                 console.error("Error:", error.message);
-                Alert.alert("Error", error.message || "An error occurred.");
+                Toast.show({
+                    type: 'error',
+                    text1: 'Unexpected Error',
+                    text2: error.message || "An error occurred."
+                });
+                Alert.alert("Error", error.message || "An error occurred."); // Fallback
             }
         }
     };
@@ -295,28 +370,25 @@ const PlaceOrderPage = ({ route }) => {
                 <View style={styles.header}>
                     <BackButton navigation={navigation} />
                     <Text style={styles.headerTitle}>Place Order</Text>
-                    {editable && (
-                        <TouchableOpacity
-                            style={styles.searchButton}
-                            onPress={() => setShowSearchModal(true)}
-                        >
-                            <Icon name="search" size={28} color="#fff" />
-                        </TouchableOpacity>
-                    )}
+                    <TouchableOpacity
+                        style={styles.searchButton}
+                        onPress={() => setShowSearchModal(true)}
+                    >
+                        <Icon name="search" size={28} color="#fff" />
+                    </TouchableOpacity>
                 </View>
 
-                {(hasExistingOrder || defaultOrder) && (
+                {orderDetails && (
                     <ScrollView contentContainerStyle={styles.contentContainer}>
                         <OrderDetails
-                            orderDetails={hasExistingOrder ? orderDetails : defaultOrder}
+                            orderDetails={orderDetails}
                             selectedDate={selectedDate}
                             shift={shift}
-                            isEditable={editable}
                         />
                         <OrderProductsList
-                            products={hasExistingOrder ? orderDetails.products : defaultOrder.products}
-                            isEditable={editable}
+                            products={orderDetails.products}
                             onQuantityChange={handleQuantityChange}
+                            setOrderDetails={setOrderDetails} // Pass setOrderDetails here
                         />
 
                         <SubmitButton handleSubmit={handleSubmitEdit} buttonStyle={styles.submitButtonStyle} textStyle={styles.submitButtonTextStyle} />
@@ -334,6 +406,7 @@ const PlaceOrderPage = ({ route }) => {
                     </ScrollView>
                 )}
             </View>
+            <Toast config={toastConfig} />
         </SafeAreaView>
     );
 };
@@ -341,25 +414,25 @@ const PlaceOrderPage = ({ route }) => {
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: '#f5f5f5', // Light grey background for SafeAreaView
+        backgroundColor: '#f5f5f5',
     },
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5', // Light grey background for container
+        backgroundColor: '#f5f5f5',
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#3498db', // Blue header background
+        backgroundColor: '#3498db',
         paddingVertical: 15,
         paddingHorizontal: 20,
-        elevation: 5, // Shadow for header
+        elevation: 5,
     },
     headerTitle: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: '#fff', // White header title color
+        color: '#fff',
     },
     searchButton: {
         padding: 10,
@@ -370,11 +443,11 @@ const styles = StyleSheet.create({
         paddingTop: 10,
     },
     submitButtonStyle: {
-        backgroundColor: '#27ae60', // Green submit button
+        backgroundColor: '#27ae60',
         paddingVertical: 15,
         borderRadius: 10,
-        elevation: 3, // Subtle shadow for button
-        marginTop: 20, // Spacing above submit button
+        elevation: 3,
+        marginTop: 20,
     },
     submitButtonTextStyle: {
         color: '#fff',
@@ -386,31 +459,52 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
-        backgroundColor: "rgba(0,0,0,0.6)", // Slightly darker modal backdrop
+        backgroundColor: "rgba(0,0,0,0.6)",
     },
     modalContent: {
         backgroundColor: 'white',
-        padding: 30, // Increased padding in modal
-        borderRadius: 15, // More rounded modal corners
+        padding: 30,
+        borderRadius: 15,
         alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
         shadowRadius: 10,
-        elevation: 7, // More pronounced shadow for modal
+        elevation: 7,
     },
     modalText: {
-        fontSize: 20, // Larger modal text
+        fontSize: 20,
         fontWeight: 'bold',
-        marginBottom: 25, // More margin below modal text
+        marginBottom: 25,
         color: '#333',
         textAlign: 'center',
     },
     buttonContainer: {
         flexDirection: 'row',
-        justifyContent: 'space-around', // Space buttons more evenly
-        width: '100%', // Buttons take full width of modal content
+        justifyContent: 'space-around',
+        width: '100%',
     },
 });
+
+const toastConfig = {
+    success: ({ text1, text2 }) => (
+        <View style={{ height: 60, width: '90%', backgroundColor: '#27ae60', padding: 15, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5, justifyContent: 'center' }}>
+            <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>{text1}</Text>
+            <Text style={{ color: 'white' }}>{text2}</Text>
+        </View>
+    ),
+    error: ({ text1, text2 }) => (
+        <View style={{ height: 60, width: '90%', backgroundColor: '#e74c3c', padding: 15, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5, justifyContent: 'center' }}>
+            <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>{text1}</Text>
+            <Text style={{ color: 'white' }}>{text2}</Text>
+        </View>
+    ),
+    info: ({ text1, text2 }) => (
+        <View style={{ height: 60, width: '90%', backgroundColor: '#3498db', padding: 15, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5, justifyContent: 'center' }}>
+            <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>{text1}</Text>
+            <Text style={{ color: 'white' }}>{text2}</Text>
+        </View>
+    ),
+};
 
 export default PlaceOrderPage;

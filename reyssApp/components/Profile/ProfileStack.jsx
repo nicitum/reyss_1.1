@@ -3,6 +3,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import ProfilePage from './profile';
 import OrdersPage from './OrdersPage';
 import DeliveryStatusUpdate from './DeliveryStatusUpdate';
+import UpdateOrderScreen from './UpdateOrders';
 
 
 const Stack = createStackNavigator();
@@ -23,6 +24,12 @@ const ProfileStack = () => {
       <Stack.Screen 
         name="DeliveryStatusUpdate" 
         component={DeliveryStatusUpdate} 
+        options={{ title: 'Update Delivery Status' }} 
+      />
+
+      <Stack.Screen 
+        name="UpdateOrders" 
+        component={UpdateOrderScreen} 
         options={{ title: 'Update Delivery Status' }} 
       />
 
