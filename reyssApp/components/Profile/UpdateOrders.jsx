@@ -35,7 +35,7 @@ const UpdateOrderScreen = () => {
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
             const decodedToken = jwtDecode(token);
-            const adminId = decodedToken.id;
+            const adminId = decodedToken.id1;
 
             const url = `http://${ipAddress}:8090/get-admin-orders/${adminId}`;
             const headers = {

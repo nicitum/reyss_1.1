@@ -9,7 +9,8 @@ import {
     Alert,
     
 } from "react-native";
-import { CheckBox } from "@react-native-community/checkbox"
+
+import { Checkbox } from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jwtDecode } from 'jwt-decode';
 import { ipAddress } from "../../urls";
@@ -629,12 +630,12 @@ const AdminAssignedUsersPage = () => {
                         userAMOrdersToday.map(order => (
                             <View key={order.id} style={styles.orderItem}>
                                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <CheckBox
-                                        value={!!selectedOrderIds[order.id]}
-                                        onValueChange={(newValue) => handleCheckboxChange(order.id, newValue)}
-                                        style={styles.orderCheckbox}
-                                        disabled={order.approve_status === 'APPROVED' || order.approve_status === 'REJECTED'}
-                                    />
+                                 <Checkbox
+                                    status={!!selectedOrderIds[order.id] ? 'checked' : 'unchecked'} // Use 'status' prop and ternary for checked state
+                                    onPress={() => handleCheckboxChange(order.id, !selectedOrderIds[order.id])} // Use 'onPress' and toggle logic in handler
+                                    style={styles.orderCheckbox}
+                                    disabled={order.approve_status === 'APPROVED' || order.approve_status === 'REJECTED'}
+                                />
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.itemText}><Text style={styles.boldText}>Order ID:</Text> {order.id}</Text>
                                         <Text style={styles.itemText}><Text style={styles.boldText}>Order Type:</Text> {order.order_type}</Text>
@@ -661,12 +662,12 @@ const AdminAssignedUsersPage = () => {
                         userPMOrdersToday.map(order => (
                             <View key={order.id} style={styles.orderItem}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <CheckBox
-                                        value={!!selectedOrderIds[order.id]}
-                                        onValueChange={(newValue) => handleCheckboxChange(order.id, newValue)}
-                                        style={styles.orderCheckbox}
-                                        disabled={order.approve_status === 'APPROVED' || order.approve_status === 'REJECTED'}
-                                    />
+                                <Checkbox
+                                status={!!selectedOrderIds[order.id] ? 'checked' : 'unchecked'}
+                                onPress={() => handleCheckboxChange(order.id, !selectedOrderIds[order.id])}
+                                style={styles.orderCheckbox}
+                                disabled={order.approve_status === 'APPROVED' || order.approve_status === 'REJECTED'}
+                                />
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.itemText}><Text style={styles.boldText}>Order ID:</Text> {order.id}</Text>
                                         <Text style={styles.itemText}><Text style={styles.boldText}>Order Type:</Text> {order.order_type}</Text>
@@ -720,11 +721,11 @@ const AdminAssignedUsersPage = () => {
             <View style={styles.tabContentContainer}>
                  <View style={[styles.bulkActionsContainer, {justifyContent: 'flex-start'}]}>
                     <View style={{flexDirection: 'row', alignItems: 'center', marginRight: 20}}>
-                        <CheckBox
-                            value={selectAllOrders}
-                            onValueChange={setSelectAllOrders}
-                            style={styles.selectAllCheckbox}
-                        />
+                    <Checkbox
+                        status={selectAllOrders ? 'checked' : 'unchecked'} // Use 'status' prop to reflect selectAllOrders state
+                        onPress={() => setSelectAllOrders(!selectAllOrders)} // Use 'onPress' to toggle selectAllOrders state
+                        style={styles.selectAllCheckbox}
+                    />
                         <Text style={{fontWeight: 'bold', marginLeft: 8}}>Select All Orders</Text>
                     </View>
 
