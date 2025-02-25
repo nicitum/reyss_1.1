@@ -8,9 +8,10 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import SearchProductModal from '../IndentPage/nestedPage/searchProductModal';
 import moment from 'moment';
 
+
 import { ipAddress } from '../../urls';
 
-const UpdateOrderScreen = () => {
+const UpdateOrdersU = () => {
     const navigation = useNavigation();
     const [orders, setOrders] = useState([]);
     const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -27,78 +28,77 @@ const UpdateOrderScreen = () => {
 
 
     useEffect(() => {
-        fetchAdminOrders();
+        fetchUsersOrders();
     }, []);
 
-    const fetchAdminOrders = async () => {
+    const fetchUsersOrders = async () => {
         setLoading(true);
         setError(null);
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
             const decodedToken = jwtDecode(token);
-            const adminId = decodedToken.id1;
+            const custId = decodedToken.id;
 
-            const url = `http://${ipAddress}:8090/get-admin-orders/${adminId}`;
+            const url = `http://${ipAddress}:8090/get-orders/${custId}`;
             const headers = {
                 "Authorization": `Bearer ${token}`,
                 "Content-Type": "application/json",
             };
 
-            console.log("FETCH ADMIN ORDERS - Request URL:", url);
-            console.log("FETCH ADMIN ORDERS - Request Headers:", headers);
+            console.log("FETCH CUSTOMER ORDERS - Request URL:", url);
+            console.log("FETCH CUSTOMER ORDERS - Request Headers:", headers);
 
             const ordersResponse = await fetch(url, { headers });
 
-            console.log("FETCH ADMIN ORDERS - Response Status:", ordersResponse.status);
-            console.log("FETCH ADMIN ORDERS - Response Status Text:", ordersResponse.statusText);
+            console.log("FETCH CUSTOMER ORDERS - Response Status:", ordersResponse.status);
+            console.log("FETCH CUSTOMER ORDERS - Response Status Text:", ordersResponse.statusText);
 
             if (!ordersResponse.ok) {
                 const errorText = await ordersResponse.text();
-                const message = `Failed to fetch admin orders. Status: ${ordersResponse.status}, Text: ${errorText}`;
-                console.error("FETCH ADMIN ORDERS - Error Response Text:", errorText);
+                const message = `Failed to fetch customer orders. Status: ${ordersResponse.status}, Text: ${errorText}`;
+                console.error("FETCH CUSTOMER ORDERS - Error Response Text:", errorText);
                 throw new Error(message);
             }
 
             const ordersData = await ordersResponse.json();
-            console.log("FETCH ADMIN ORDERS - Response Data:", ordersData);
+            console.log("FETCH CUSTOMER ORDERS - Response Data:", ordersData);
             let fetchedOrders = ordersData.orders;
 
-            // **FILTER ORDERS FOR TODAY (Epoch Seconds & CORRECT FORMAT & .unix()):**
-            const todayFormatted = moment().format("YYYY-MM-DD"); // Corrected format to YYYY-MM-DD (more standard)
-            console.log("DEBUG: Today's Formatted Date (YYYY-MM-DD):", todayFormatted); // DEBUG LOG
+            const todayFormatted = moment().format("YYYY-MM-DD");
+            console.log("DEBUG: Today's Formatted Date (YYYY-MM-DD):", todayFormatted);
 
             const todaysOrders = fetchedOrders.filter(order => {
                 if (!order.placed_on) {
-                    console.log("DEBUG: order.placed_on is missing for order ID:", order.id); // DEBUG LOG
-                    return false; // Skip if placed_on is missing or invalid
+                    console.log("DEBUG: order.placed_on is missing for order ID:", order.id);
+                    return false;
                 }
 
-                console.log("DEBUG: Raw order.placed_on value:", order.placed_on, typeof order.placed_on); // DEBUG LOG - Raw value and type
+                console.log("DEBUG: Raw order.placed_on value:", order.placed_on, typeof order.placed_on);
 
-                const parsedEpochSeconds = parseInt(order.placed_on, 10); // Still parse to integer
-                console.log("DEBUG: Parsed Epoch Timestamp (parseInt) - Seconds:", parsedEpochSeconds, typeof parsedEpochSeconds); // DEBUG LOG - Parsed integer (seconds)
+                const parsedEpochSeconds = parseInt(order.placed_on, 10);
+                console.log("DEBUG: Parsed Epoch Timestamp (parseInt) - Seconds:", parsedEpochSeconds, typeof parsedEpochSeconds);
 
-                // **Use moment.unix() to parse epoch seconds:**
-                const orderDateMoment = moment.unix(parsedEpochSeconds); // **Use moment.unix()**
-                console.log("DEBUG: Moment Object from Epoch (Seconds using .unix()):", orderDateMoment); // DEBUG LOG - Moment object (parsed as seconds)
-                console.log("DEBUG: Moment Object valueOf (Epoch in ms AFTER .unix()):", orderDateMoment.valueOf()); // DEBUG LOG - Epoch value from Moment (in ms)
+                const orderDateMoment = moment.unix(parsedEpochSeconds);
+                console.log("DEBUG: Moment Object from Epoch (Seconds using .unix()):", orderDateMoment);
+                console.log("DEBUG: Moment Object valueOf (Epoch in ms AFTER .unix()):", orderDateMoment.valueOf());
 
-                const orderDateFormatted = orderDateMoment.format("YYYY-MM-DD"); // Corrected format to YYYY-MM-DD
-                console.log("DEBUG: Formatted Order Date (YYYY-MM-DD):", orderDateFormatted); // DEBUG LOG - Formatted date
+                const orderDateFormatted = orderDateMoment.format("YYYY-MM-DD");
+                console.log("DEBUG: Formatted Order Date (YYYY-MM-DD):", orderDateFormatted);
 
-                return orderDateFormatted === todayFormatted; // Compare formatted dates
+                return orderDateFormatted === todayFormatted;
             });
 
-            setOrders(todaysOrders); // Set the filtered orders
+            setOrders(todaysOrders);
 
         } catch (fetchOrdersError) {
-            console.error("FETCH ADMIN ORDERS - Fetch Error:", fetchOrdersError);
-            setError(fetchOrdersError.message || "Failed to fetch admin orders.");
-            Toast.show({ type: 'error', text1: 'Fetch Error', text2: fetchOrdersError.message || "Failed to fetch admin orders." });
+            console.error("FETCH CUSTOMER ORDERS - Fetch Error:", fetchOrdersError);
+            setError(fetchOrdersError.message || "Failed to fetch customer orders.");
+            Toast.show({ type: 'error', text1: 'Fetch Error', text2: fetchOrdersError.message || "Failed to fetch customer orders." });
         } finally {
             setLoading(false);
         }
     };
+
 
     const fetchOrderProducts = async (orderIdToFetch) => {
         setLoading(true);
@@ -175,9 +175,7 @@ const UpdateOrderScreen = () => {
 
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
-
-
-            const orderProductIdToDelete = productToDelete.product_id; //
+            const orderProductIdToDelete = productToDelete.product_id;
             console.log(orderProductIdToDelete)
 
             const url = `http://${ipAddress}:8090/delete_order_product/${orderProductIdToDelete}`;
@@ -190,7 +188,6 @@ const UpdateOrderScreen = () => {
                 headers: headers,
             });
 
-
             if (!deleteResponse.ok) {
                 const errorText = await deleteResponse.text();
                 const message = `Failed to delete order product. Status: ${deleteResponse.status}, Text: ${errorText}`;
@@ -202,21 +199,12 @@ const UpdateOrderScreen = () => {
             const deleteData = await deleteResponse.json();
             console.log("DELETE ORDER PRODUCT - Response Data:", deleteData);
 
-            if (deleteData.orderDeleted) {
-                // Order was also deleted, update orders list
-                const deletedOrderId = deleteData.deletedOrderId;
-                const updatedOrders = orders.filter(order => order.id !== deletedOrderId);
-                setOrders(updatedOrders);
-                Toast.show({
-                    type: 'success',
-                    text1: 'Order and Product Item Deleted',
-                    text2: deleteData.message || `Product item deleted successfully, and order ${deletedOrderId} removed as it became empty.`
-                });
-                setSelectedOrderId(null);
-                setProducts([]);
-
+            // Check if this was the last product
+            if (products.length === 1) {
+                // Call handleDeleteOrder to cancel the entire order
+                await handleDeleteOrder(selectedOrderId);
             } else {
-                // Only the product item was deleted, update product list as before
+                // Only the product item was deleted, update product list
                 const updatedProducts = products.filter((_, index) => index !== indexToDelete);
                 setProducts(updatedProducts);
                 Toast.show({
@@ -226,7 +214,6 @@ const UpdateOrderScreen = () => {
                 });
             }
             setIsOrderUpdated(false);
-
 
         } catch (deleteError) {
             console.error("DELETE ORDER PRODUCT - Error:", deleteError);
@@ -249,16 +236,14 @@ const UpdateOrderScreen = () => {
             const token = await AsyncStorage.getItem("userAuthToken");
 
             let calculatedTotalAmount = 0;
-            // Include both existing products and newly added products in the update
             const productsToUpdate = products.map(product => ({
                 order_id: selectedOrderId,
-                product_id: product.product_id, // Ensure product_id is included for existing products
-                name: product.name, // Include name and category for new products
+                product_id: product.product_id,
+                name: product.name,
                 category: product.category,
                 price: product.price,
                 quantity: product.quantity,
             }));
-
 
             productsToUpdate.forEach(product => {
                 calculatedTotalAmount += product.quantity * product.price;
@@ -304,9 +289,10 @@ const UpdateOrderScreen = () => {
                 text1: 'Order Updated',
                 text2: updateData.message || "Order updated successfully!"
             });
-            setIsOrderUpdated(true);
-            fetchOrderProducts(selectedOrderId);
-            fetchAdminOrders()
+            await fetchUsersOrders();
+            setSelectedOrderId(null);
+            setProducts([]);
+            setIsOrderUpdated(false);
         } catch (error) {
             console.error("UPDATE ORDER - Error:", error);
             setError(error.message || "Failed to update order.");
@@ -317,70 +303,61 @@ const UpdateOrderScreen = () => {
     };
 
     const handleDeleteOrder = async (orderIdToDelete) => {
-        console.log("handleDeleteOrder CALLED - Order ID:", orderIdToDelete); // Keep this log
-    
+        console.log("handleDeleteOrder CALLED - Order ID:", orderIdToDelete);
+
         setOrderDeleteLoading(true);
         setOrderDeleteLoadingId(orderIdToDelete);
         setError(null);
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
-            console.log("DELETE ORDER - Token:", token);
-            const url = `http://${ipAddress}:8090/delete_order/${orderIdToDelete}`;
-            console.log("DELETE ORDER - URL:", url);
+            const url = `http://${ipAddress}:8090/cancel_order/${orderIdToDelete}`;
             const headers = {
                 "Authorization": `Bearer ${token}`,
                 "Content-Type": "application/json",
             };
-            console.log("DELETE ORDER - Headers:", headers);
+
             const deleteOrderResponse = await fetch(url, {
-                method: 'DELETE',
+                method: 'POST',
                 headers: headers,
             });
-    
-            console.log("DELETE ORDER - Response Status:", deleteOrderResponse.status);
-            console.log("DELETE ORDER - Response Status Text:", deleteOrderResponse.statusText);
-    
-    
+
             if (!deleteOrderResponse.ok) {
                 const errorText = await deleteOrderResponse.text();
                 const message = `Failed to delete order. Status: ${deleteOrderResponse.status}, Text: ${errorText}`;
-                console.error("DELETE ORDER - Error Response:", errorText);
                 throw new Error(message);
             }
-    
+
             const deleteOrderData = await deleteOrderResponse.json();
-            console.log("DELETE ORDER - Response Data:", deleteOrderData);
-    
+
             if (deleteOrderData.success) {
                 Toast.show({
                     type: 'success',
-                    text1: 'Order Deleted',
-                    text2: deleteOrderData.message || `Order ID ${orderIdToDelete} deleted successfully.`
+                    text1: 'Order Cancelled',
+                    text2: deleteOrderData.message || `Order ID ${orderIdToDelete} cancelled successfully.`
                 });
-                const updatedOrders = orders.filter(order => order.id !== orderIdToDelete);
-                setOrders(updatedOrders);
+                
+                // Fetch updated orders list immediately after successful cancellation
+                await fetchUsersOrders();
+                
                 setSelectedOrderId(null);
                 setProducts([]);
             } else {
                 Toast.show({
                     type: 'error',
-                    text1: 'Failed to Delete Order',
-                    text2: deleteOrderData.message || "Failed to delete the order."
+                    text1: 'Failed to Cancel Order',
+                    text2: deleteOrderData.message || "Failed to cancel the order."
                 });
-                setError(deleteOrderData.message || "Failed to delete the order.");
+                setError(deleteOrderData.message || "Failed to cancel the order.");
             }
-    
-    
+
         } catch (deleteOrderError) {
             console.error("DELETE ORDER - Error:", deleteOrderError);
-            setError(deleteOrderError.message || "Failed to delete order.");
-            Toast.show({ type: 'error', text1: 'Deletion Error', text2: deleteOrderError.message || "Failed to delete the order." });
+            setError(deleteOrderError.message || "Failed to cancel order.");
+            Toast.show({ type: 'error', text1: 'Cancellation Error', text2: deleteOrderError.message || "Failed to cancel the order." });
         } finally {
             setOrderDeleteLoading(false);
             setOrderDeleteLoadingId(null);
         }
-    
-        console.log("handleDeleteOrder END"); // Keep this log
     };
 
     const renderOrderItem = ({ item }) => (
@@ -398,8 +375,9 @@ const UpdateOrderScreen = () => {
         >
             <View style={styles.orderItemContainer}>
                 <Text style={styles.orderIdText}>Order ID: {item.id}</Text>
-                <Text style={styles.customerNameText}>Customer ID: {item.customer_id}</Text>
-                <Text style={styles.orderAmountText}>Total Amount: {item.amount ? parseFloat(item.amount).toFixed(2) : 'N/A'}</Text>
+              
+                <Text style={styles.orderAmountText}>Total Amount: {item.total_amount ? parseFloat(item.total_amount).toFixed(2) : 0.0}</Text>
+                <Text style={styles.customerNameText}>Cancelled ?: {item.cancelled}</Text>
                 <TouchableOpacity
                     style={styles.deleteOrderButton}
                     onPress={() => handleDeleteOrder(item.id)}
@@ -408,7 +386,7 @@ const UpdateOrderScreen = () => {
                     {orderDeleteLoading && orderDeleteLoadingId === item.id ? (
                         <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                        <Icon name="trash" size={20} color="#fff" />
+                        <Icon name="time" size={20} color="#fff" />
                     )}
                 </TouchableOpacity>
             </View>
@@ -448,7 +426,7 @@ const UpdateOrderScreen = () => {
                 productId: productToAdd.id,
                 quantity: 1,
                 price: productToAdd.price,
-                name: productToAdd.name,       // Include product name
+                name: productToAdd.name, 
                 category: productToAdd.category, // Include product category
             };
 
@@ -538,7 +516,15 @@ const UpdateOrderScreen = () => {
                         />
                     )}
                 </View>
-                <Text style={styles.amountText}>Amount: {totalAmount.toFixed(2)}</Text>
+                <Text style={styles.amountText}>Amount: ₹{totalAmount.toFixed(2)}</Text>
+                {index === products.length - 1 && (
+                    <View style={styles.totalSumContainer}>
+                        <Text style={styles.totalSumText}>
+                            Total Order Amount: ₹
+                            {products.reduce((sum, product) => sum + (product.quantity * product.price), 0).toFixed(2)}
+                        </Text>
+                    </View>
+                )}
             </View>
         );
     };
@@ -546,20 +532,13 @@ const UpdateOrderScreen = () => {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.headerText}>Update Orders</Text>
+            <Text style={styles.headerText}>Order Update/Edit Page</Text>
             {loading && <Text style={styles.loadingText}>Loading Orders...</Text>}
             {error && <Text style={styles.errorText}>Error: {error}</Text>}
 
             <View style={styles.sectionHeader}>
                 <Text style={styles.sectionHeaderText}>Select Order to Update</Text>
-                {isOrderUpdated && (
-                    <View style={styles.updateConfirmConfirmation}>
-                        <Icon name="check-circle" size={20} color="#4CAF50" style={styles.confirmationIcon} />
-                        <Text style={styles.confirmationText}>Order Updated</Text>
-                    </View>
-                )}
             </View>
-
 
             <FlatList
                 data={orders}
@@ -568,232 +547,204 @@ const UpdateOrderScreen = () => {
                 ListEmptyComponent={() => <Text style={{ textAlign: 'center', marginTop: 10 }}>No orders found.</Text>}
             />
 
-            {selectedOrderId && (
+            {selectedOrderId && !isOrderUpdated && (
                 <View style={styles.orderDetailsSection}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
                         <Text style={styles.sectionHeaderText}>Order ID: {selectedOrderId} - Product Details</Text>
-                        {!isOrderUpdated && (
-                            <TouchableOpacity
-                                style={styles.searchButton}
-                                onPress={() => setShowSearchModal(true)}
-                            >
-                                <Icon name="search" size={24} color="#333" />
-                            </TouchableOpacity>
-                        )}
+                        <TouchableOpacity
+                            style={styles.searchButton}
+                            onPress={() => setShowSearchModal(true)}
+                        >
+                            <Icon name="search" size={24} color="#333" />
+                        </TouchableOpacity>
                     </View>
 
-                    <FlatList
-                        data={products}
-                        keyExtractor={(item, index) => index.toString()}
-                        renderItem={renderProductItem}
-                    />
-                    {!isOrderUpdated && (
+                    <View style={{ flex: 1 }}>
+                        <FlatList
+                            data={products}
+                            keyExtractor={(_item, index) => index.toString()}
+                            renderItem={renderProductItem}
+                            contentContainerStyle={{ paddingBottom: 100 }}
+                        />
+                    </View>
+    
+                    <View style={styles.bottomContainer}>
+                        <View style={styles.totalSumContainer}>
+                            <Text style={styles.totalSumText}>
+                                Total Order Amount: ₹
+                                {products.reduce((sum, product) => sum + (product.quantity * product.price), 0).toFixed(2)}
+                            </Text>
+                        </View>
                         <View style={styles.actionButtonsContainer}>
                             <Button
                                 title="Update Order"
                                 onPress={handleUpdateOrder}
-                                disabled={loading || products.length === 0 || isOrderUpdated}
-                                style={styles.updateButton}
+                                disabled={loading}
                             />
                         </View>
-                    )}
-                    {isOrderUpdated && (
-                        <Text style={styles.viewModeMessage}>Order updated. Editing disabled.</Text>
-                    )}
+                    </View>
                 </View>
             )}
+
             <Toast ref={(ref) => Toast.setRef(ref)} />
             <SearchProductModal
                 isVisible={showSearchModal}
                 onClose={() => setShowSearchModal(false)}
                 onAddProduct={handleAddProductToOrder}
             />
-
         </View>
-    );
-};
-
+    )};
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        padding: 20,
         backgroundColor: '#f4f4f8',
     },
     headerText: {
-        fontSize: 26,
+        fontSize: 18,
         fontWeight: 'bold',
-        marginBottom: 25,
+        padding: 10,
+        backgroundColor: '#fff',
         textAlign: 'center',
         color: '#333',
     },
     loadingText: {
         textAlign: 'center',
-        marginBottom: 15,
+        padding: 5,
         color: '#555',
     },
     errorText: {
         color: 'red',
-        marginBottom: 15,
+        padding: 5,
         textAlign: 'center',
     },
     sectionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 15,
+        padding: 8,
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
     },
     sectionHeaderText: {
-        fontSize: 20,
+        fontSize: 16,
         fontWeight: 'bold',
-        color: '#3a3a3a',
-    },
-    updateConfirmConfirmation: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    confirmationText: {
-        color: '#4CAF50',
-        marginLeft: 5,
-        fontWeight: 'bold',
-    },
-    confirmationIcon: {
-        marginRight: 5,
+        color: '#333',
     },
     orderItemTouchable: {
         backgroundColor: '#fff',
-        padding: 15,
-        marginBottom: 10,
-        borderRadius: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
+        padding: 8,
+        marginHorizontal: 8,
+        marginVertical: 4,
+        borderRadius: 4,
+        elevation: 1,
     },
     orderItemContainer: {
-        marginBottom: 0,
         flexDirection: 'row',
+        alignItems: 'center',
         justifyContent: 'space-between',
-        alignItems: 'center'
     },
     orderIdText: {
-        fontSize: 18,
+        fontSize: 14,
         fontWeight: 'bold',
-        color: '#2e2e2e',
-        flex: 2,
-    },
-    customerNameText: {
-        fontSize: 16,
-        color: '#5a5a5a',
-        marginTop: 5,
-        flex: 2,
+        flex: 1,
     },
     orderAmountText: {
-        fontSize: 16,
-        color: '#5a5a5a',
-        marginTop: 5,
-        flex: 2,
+        fontSize: 14,
+        flex: 1,
+    },
+    customerNameText: {
+        fontSize: 14,
+        flex: 1,
     },
     orderDetailsSection: {
-        marginTop: 25,
-        borderColor: '#ddd',
-        borderWidth: 1,
-        padding: 15,
-        borderRadius: 8,
+        flex: 1,
+        marginTop: 5,
         backgroundColor: '#fff',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    sectionHeaderText: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        marginBottom: 15,
-        color: '#3a3a3a',
     },
     productItemContainer: {
-        padding: 12,
-        marginBottom: 10,
+        padding: 8,
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        borderBottomColor: '#eee',
     },
     productNameText: {
-        fontSize: 17,
+        fontSize: 14,
         fontWeight: 'bold',
-        marginBottom: 4,
-        color: '#333',
     },
     productCategoryText: {
-        fontSize: 15,
-        color: '#777',
-        marginBottom: 8,
+        fontSize: 12,
+        color: '#666',
     },
     inputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 10,
+        marginTop: 4,
     },
     quantityLabel: {
-        fontSize: 16,
-        marginRight: 10,
-        color: '#444',
+        fontSize: 14,
+        width: 70,
     },
     quantityInput: {
-        flex: 1,
         borderWidth: 1,
-        padding: 8,
-        borderRadius: 5,
-        marginLeft: 10,
+        borderColor: '#ddd',
+        padding: 4,
+        width: 60,
+    },
+    bottomContainer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
         backgroundColor: '#fff',
-        color: '#333',
-    },
-    viewModeQuantity: {
-        fontSize: 16,
-        paddingVertical: 8,
-        paddingHorizontal: 10,
-        marginLeft: 10,
-        color: '#555',
-    },
-    amountText: {
-        fontSize: 17,
-        fontWeight: '500',
-        textAlign: 'right',
-        color: '#444',
-    },
-    updateButton: {
-        marginTop: 25,
-        backgroundColor: '#4285f4',
-        borderRadius: 8,
-        paddingVertical: 12,
-    },
-    deleteButton: {
-        padding: 5,
-        marginLeft: 10,
-    },
-    viewModeMessage: {
-        textAlign: 'center',
-        marginTop: 15,
-        color: '#777',
-        fontStyle: 'italic',
+        borderTopWidth: 1,
+        borderTopColor: '#eee',
+        elevation: 3,
     },
     actionButtonsContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        marginTop: 20,
-        justifyContent: 'center'
+        padding: 10,
+    },
+    actionButtonsContainer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: '#fff',
+        padding: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#eee',
+        elevation: 3,
     },
     searchButton: {
         padding: 8,
+        backgroundColor: '#FFD700',
+        borderRadius: 4,
     },
     deleteOrderButton: {
-        backgroundColor: '#d9534f',
+        backgroundColor: '#FFD700',
         padding: 8,
-        borderRadius: 5,
-        marginLeft: 10,
+        borderRadius: 4,
     },
+    totalSumContainer: {
+        marginTop: 8,
+        paddingTop: 8,
+        borderTopWidth: 1,
+        borderTopColor: '#eee',
+    },
+    totalSumText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        textAlign: 'right',
+    },
+    // New button styles
+    button: {
+        backgroundColor: '#FFD700',
+        padding: 10,
+        borderRadius: 4,
+        alignItems: 'center',
+    },
+    buttonText: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: 'bold',
+    }
 });
 
-export default UpdateOrderScreen;
+export default UpdateOrdersU;

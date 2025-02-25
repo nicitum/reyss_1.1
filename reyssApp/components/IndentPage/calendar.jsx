@@ -3,114 +3,99 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Calendar } from "react-native-calendars";
 import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 
-const CalendarComponent = ({
-  selectedDate,
-  handleDatePress,
-  dayOrderQuantity,
-}) => {
-  return (
-    <Calendar
-      onDayPress={handleDatePress}
-      markedDates={{
-        [selectedDate]: {
-          selected: true,
-          customText: dayOrderQuantity[selectedDate],
-        },
-      }}
-      theme={{
-        selectedDayBackgroundColor: "#ffcc00",
-        todayTextColor: "#ffcc00",
-        arrowColor: "#ffcc00",
-      }}
-      renderArrow={(direction) => (
-        <MaterialIcons
-          name={direction === "left" ? "arrow-back" : "arrow-forward"}
-          size={24}
-          color="#ffcc00"
-        />
-      )}
-      dayComponent={({ date, state }) => {
-        const customText = dayOrderQuantity[date.dateString] || "0";
-        const isSelected = date.dateString === selectedDate;
-        const isToday = state === "today";
+const CalendarComponent = ({ selectedDate, handleDatePress }) => {
+    return (
+        <View style={styles.container}>
+            <Calendar
+                onDayPress={(day) => handleDatePress(day)}
+                markedDates={{
+                    [selectedDate]: {
+                        selected: true,
+                        selectedColor: styles.theme.selectedDayBackgroundColor,
+                        selectedTextColor: styles.theme.selectedDayTextColor,
+                    },
+                }}
+                theme={styles.theme}
+                renderArrow={(direction) => (
+                    <MaterialIcons
+                        name={direction === "left" ? "chevron-left" : "chevron-right"}
+                        size={24}
+                        color={styles.theme.arrowColor}
+                    />
+                )}
+                dayComponent={({ date, state }) => {
+                    const isSelected = date.dateString === selectedDate;
 
-        return (
-          <View style={styles.dayWrapper}>
-            {customText && (
-              <Text
-                style={[
-                  styles.customText,
-                  isSelected && styles.selectedCustomText,
-                ]}
-              >
-                {customText}
-              </Text>
-            )}
-            <TouchableOpacity
-              style={[
-                styles.dayContainer,
-                isSelected && styles.selectedDay,
-                isToday && styles.todayDay,
-              ]}
-              onPress={() => handleDatePress(date)}
-            >
-              <Text
-                style={[
-                  styles.dayText,
-                  state === "disabled" && styles.disabledDayText,
-                  isSelected && styles.selectedDayText,
-                  isToday && styles.todayDayText,
-                ]}
-              >
-                {date.day}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        );
-      }}
-    />
-  );
+                    return (
+                        <View style={styles.dayWrapper}>
+                            <TouchableOpacity
+                                style={[styles.dayContainer, isSelected && styles.selectedDay]}
+                                onPress={() => handleDatePress(date)}
+                            >
+                                <Text
+                                    style={[styles.dayText, state === "disabled" && styles.disabledDayText, isSelected && styles.selectedDayText]}
+                                >
+                                    {date.day}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    );
+                }}
+            />
+        </View>
+    );
 };
 
 const styles = StyleSheet.create({
-  dayWrapper: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dayContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dayText: {
-    fontSize: 18,
-    color: "black",
-  },
-  selectedDay: {
-    backgroundColor: "#ffcc00",
-    borderRadius: 16,
-    width: 32,
-    height: 32,
-  },
-  selectedDayText: {
-    color: "white",
-  },
-  todayDay: {
-    borderColor: "#ffcc00",
-    borderWidth: 2,
-    borderRadius: 16,
-    width: 32,
-    height: 32,
-  },
-  disabledDayText: {
-    color: "gray",
-  },
-  customText: {
-    fontSize: 12,
-    color: "red",
-  },
-  selectedCustomText: {
-    color: "red",
-  },
+    container: {
+        borderRadius: 12,
+        overflow: 'hidden',
+        backgroundColor: '#ffffff',
+        borderColor: '#e0e0e0',
+        borderWidth: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    theme: {
+        backgroundColor: '#ffffff',
+        calendarBackground: '#ffffff',
+        textSectionTitleColor: '#777777',
+        dayTextColor: '#333333',
+        todayTextColor: '#007bff',
+        selectedDayBackgroundColor: '#007bff',
+        selectedDayTextColor: '#ffffff',
+        monthTextColor: '#333333',
+        yearTextColor: '#333333',
+        arrowColor: '#007bff',
+    },
+    dayWrapper: {
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    dayContainer: {
+        alignItems: "center",
+        justifyContent: "center",
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+    },
+    dayText: {
+        fontSize: 16,
+        color: "#333",
+    },
+    selectedDay: {
+        backgroundColor: '#007bff',
+    },
+    selectedDayText: {
+        color: "white",
+        fontWeight: 'bold',
+    },
+    disabledDayText: {
+        color: "#999999",
+    },
 });
 
 export default CalendarComponent;

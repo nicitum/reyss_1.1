@@ -4,7 +4,8 @@ import ProfilePage from './profile';
 import OrdersPage from './OrdersPage';
 import DeliveryStatusUpdate from './DeliveryStatusUpdate';
 import UpdateOrderScreen from './UpdateOrders';
-
+import UpdateOrdersU from './UpdateOrdersU';
+import AdminOrderHistory from './AdminOrderHistory';
 
 const Stack = createStackNavigator();
 
@@ -30,8 +31,24 @@ const ProfileStack = () => {
       <Stack.Screen 
         name="UpdateOrders" 
         component={UpdateOrderScreen} 
-        options={{ title: 'Update Delivery Status' }} 
+        options={{ title: 'Edit/Update Orders' }} 
       />
+
+      <Stack.Screen 
+        name="UpdateOrdersU" 
+        component={UpdateOrdersU} 
+        options={{ title: 'Update Orders' }} 
+      />
+
+      <Stack.Screen 
+        name="AdminOrderHistory" 
+        component={AdminOrderHistory} 
+        options={{ title: 'Admin Order History' }} 
+      />
+
+
+
+
 
     </Stack.Navigator>
     

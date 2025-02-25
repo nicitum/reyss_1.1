@@ -35,46 +35,36 @@ router.post("/update-order-status", async (req, res) => {
 
 router.post("/update-delivery-status", async (req, res) => {
     try {
-        const { customer_id, delivery_status } = req.body;
+        // **Correctly extract order_id from req.body**
+        const { customer_id, delivery_status, order_id } = req.body;
 
-        if (!customer_id || !delivery_status) {
-            return res.status(400).json({ status: false, message: "Customer ID and delivery status are required" });
+        if (!customer_id || !delivery_status || !order_id) { // **Added check for order_id**
+            return res.status(400).json({ status: false, message: "Customer ID, order ID, and delivery status are required" }); // **Updated message**
         }
 
         if (!["pending", "delivered"].includes(delivery_status.toLowerCase())) {
             return res.status(400).json({ status: false, message: "Invalid delivery status" });
         }
 
-        // Fetch the latest order_id first
-        const fetchQuery = "SELECT id FROM orders WHERE customer_id = ? ORDER BY id DESC LIMIT 1";
-        const fetchResult = await executeQuery(fetchQuery, [customer_id]);
-
-        if (fetchResult.length === 0) {
-            return res.status(404).json({ status: false, message: "No orders found for the customer" });
-        }
-
-        const latestOrderId = fetchResult[0].id;
-
-        // Update the delivery status for this order
-        const updateQuery = "UPDATE orders SET delivery_status = ? WHERE id = ?";
-        const updateValues = [delivery_status.toLowerCase(), latestOrderId];
+        // **Update the delivery status for the SPECIFIC order ID from the request**
+        const updateQuery = "UPDATE orders SET delivery_status = ? WHERE id = ?"; // **WHERE id = ? is now correct for order_id**
+        const updateValues = [delivery_status.toLowerCase(), order_id]; // **Using order_id from request!**
         const updateResult = await executeQuery(updateQuery, updateValues);
 
         if (updateResult.affectedRows > 0) {
             return res.json({
                 status: true,
                 message: "Delivery status updated successfully",
-                order_id: latestOrderId
+                order_id: order_id // **Returning the CORRECT order_id that was updated**
             });
         } else {
-            return res.status(500).json({ status: false, message: "Failed to update delivery status" });
+            return res.status(404).json({ status: false, message: "Order not found or failed to update", order_id: order_id }); // **Return order_id in error response too**
         }
     } catch (error) {
         console.error("Error updating delivery status:", error);
         res.status(500).json({ status: false, message: "Internal Server Error" });
     }
 });
-
 
 
 router.get("/get-orders/:customer_id", async (req, res) => {
@@ -85,7 +75,7 @@ router.get("/get-orders/:customer_id", async (req, res) => {
             return res.status(400).json({ status: false, message: "Customer ID is required" });
         }
 
-        const fetchQuery = "SELECT id, delivery_status FROM orders WHERE customer_id = ? ORDER BY id DESC";
+        const fetchQuery = "SELECT id,total_amount,customer_id,delivery_status,approve_status,cancelled,placed_on FROM orders WHERE customer_id = ? ORDER BY id DESC";
         const fetchResult = await executeQuery(fetchQuery, [customer_id]);
 
         if (fetchResult.length > 0) {
@@ -100,63 +90,7 @@ router.get("/get-orders/:customer_id", async (req, res) => {
 });
 
 
-router.post("/update-default-order", async (req, res) => {
-    try {
-        const orders = req.body;
 
-        if (!Array.isArray(orders)) {
-            return res.status(400).json({ message: "Invalid request format. Expected an array of objects." });
-        }
-
-        // Get customer_id (If no products, use first product's customer_id)
-        const customerId = orders.length > 0 ? orders[0].customer_id : req.body.customer_id;
-
-        if (!customerId) {
-            return res.status(400).json({ message: "Missing customer ID in request." });
-        }
-
-        // 🔴 Always delete existing orders first
-        const deleteQuery = `DELETE FROM default_orders WHERE customer_id = ?`;
-        await executeQuery(deleteQuery, [customerId]);
-
-        // 🛑 If no new products, return after deletion
-        if (orders.length === 0) {
-            return res.status(200).json({ message: "All default orders cleared successfully." });
-        }
-
-        const createdAt = Math.floor(Date.now() / 1000);
-        const updatedAt = createdAt;
-
-        // Prepare new values for insertion
-        const values = orders.map(order => [
-            order.customer_id,
-            order.product_id,
-            order.quantity,
-            createdAt,
-            updatedAt
-        ]);
-
-        const insertQuery = `
-            INSERT INTO default_orders (customer_id, product_id, quantity, created_at, updated_at)
-            VALUES ?;
-        `;
-
-        const result = await executeQuery(insertQuery, [values]);
-
-        if (result.affectedRows > 0) {
-            return res.status(201).json({ message: "Default orders updated successfully." });
-        } else {
-            return res.status(500).json({ message: "Failed to update default orders." });
-        }
-
-    } catch (error) {
-        console.error("Error updating default order:", error);
-        res.status(500).json({ message: "Internal server error." });
-    }
-});
-
-
-  
 
 // API to fetch orders for a specific admin with total indent amount
 router.get("/get-admin-orders/:admin_id", async (req, res) => {
@@ -296,12 +230,16 @@ router.get("/most-recent-order", async (req, res) => {
         }
 
         // SQL Query to fetch the most recent order
+
+        
         const query = `
-            SELECT *
-            FROM orders
-            WHERE customer_id = ? AND order_type = ?
-            ORDER BY placed_on DESC
+            SELECT *  
+            FROM orders  
+            WHERE customer_id = ?  
+            AND order_type = ?  
+            ORDER BY FROM_UNIXTIME(placed_on) DESC  
             LIMIT 1;
+
         `;
 
         const recentOrder = await executeQuery(query, [customerId, orderType]);
@@ -319,6 +257,8 @@ router.get("/most-recent-order", async (req, res) => {
         res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
     }
 });
+
+
 
 
 
@@ -348,12 +288,12 @@ router.delete("/delete_order_product/:orderProductId", async (req, res) => {
 });
 
 
-// --- 2. POST /order_update (Modified - Quantity Updates Only, Total Amount Update) ---
+// --- 2. POST /order_update (Modified with cancellation and altered status logic) ---
 router.post("/order_update", async (req, res) => {
     try {
         const { orderId, products, totalAmount } = req.body;
 
-        // Input validation (orderId, products array, totalAmount) -  (No change in validation)
+        // Input validation
         if (!orderId) {
             return res.status(400).json({ success: false, message: "Order ID is required" });
         }
@@ -364,43 +304,83 @@ router.post("/order_update", async (req, res) => {
             return res.status(400).json({ success: false, message: "Total amount is required" });
         }
 
+        // First check if any products exist for this order
+        const checkProductsQuery = `
+            SELECT COUNT(*) as count 
+            FROM order_products 
+            WHERE order_id = ?
+        `;
+        const [productCount] = await executeQuery(checkProductsQuery, [orderId]);
+        
+        // Set cancelled status based on products existence
+        const cancelledStatus = (products.length === 0 || productCount.count === 0) ? 'Yes' : 'No';
 
-        // **Database Update Logic (Quantity and Price Updates Only)**
-        for (const product of products) {
-            const { order_id, quantity, price } = product; // **Crucially: expects 'order_id' in product**
+        // Update order products if there are any
+        if (products.length > 0) {
+            for (const product of products) {
+                const { order_id, quantity, price, is_new } = product;
+                if (!order_id) {
+                    return res.status(400).json({ success: false, message: "order_product_id is required for product updates" });
+                }
 
-            if (!order_id) { // o
-                return res.status(400).json({ success: false, message: "order_product_id is required for product updates" }); // Message is a bit misleading, but API expects order_id
+                // Get current quantity for existing products
+                let currentQuantity = 0;
+                if (!is_new) {
+                    const currentProductQuery = `SELECT quantity FROM order_products WHERE order_id = ? AND product_id = ?`;
+                    const currentProduct = await executeQuery(currentProductQuery, [order_id, product.product_id]);
+                    if (currentProduct.length > 0) {
+                        currentQuantity = currentProduct[0].quantity;
+                    }
+                }
+
+                if (is_new) {
+                    const insertProductQuery = `
+                        INSERT INTO order_products (order_id, product_id, quantity, price, name, category, altered)
+                        VALUES (?, ?, ?, ?, ?, ?, 'No')
+                    `;
+                    await executeQuery(insertProductQuery, [orderId, product.product_id, quantity, price, product.name, product.category]);
+                } else {
+                    const updateProductQuery = `
+                        UPDATE order_products
+                        SET quantity = ?, 
+                            price = ?,
+                            altered = ?
+                        WHERE order_id = ? AND product_id = ?
+                    `;
+                    
+                    let alteredStatus = currentQuantity !== quantity ? 'Yes' : 'No';
+                    await executeQuery(updateProductQuery, [quantity, price, alteredStatus, orderId, product.product_id]);
+                }
             }
-
-            const updateProductQuery = `
-                UPDATE order_products
-                SET quantity = ?, price = ?
-                WHERE order_id = ?
-            `;
-            await executeQuery(updateProductQuery, [quantity, price, order_id]);
         }
 
-
-        // 3. Update total_amount in the orders table (No change)
-        const updateOrderTotalAmountQuery = `
+        // Update total amount and cancelled status in orders table
+        const updateOrderQuery = `
             UPDATE orders
-            SET total_amount = ?
+            SET total_amount = ?,
+                cancelled = ?,
+                altered = 'Yes'
             WHERE id = ?
         `;
-        await executeQuery(updateOrderTotalAmountQuery, [totalAmount, orderId]);
+        await executeQuery(updateOrderQuery, [totalAmount, cancelledStatus, orderId]);
 
-        res.json({ success: true, message: "Order products and total amount updated successfully" });
+        res.json({ 
+            success: true, 
+            message: `Order updated successfully. Status: ${cancelledStatus}`,
+            cancelled: cancelledStatus
+        });
 
     } catch (error) {
-        console.error("Error updating order products and total amount:", error);
+        console.error("Error updating order:", error);
         res.status(500).json({ success: false, message: "Internal Server Error", error: error });
     }
 });
 
 
-// --- 3. DELETE Order (Endpoint to delete the entire order - No Change) ---
-router.delete("/delete_order/:orderId", async (req, res) => {
+
+
+// --- 3. CANCEL Order (Endpoint to cancel the order - Modified from DELETE) ---
+router.post("/cancel_order/:orderId", async (req, res) => { // Changed to POST
     try {
         const { orderId } = req.params;
 
@@ -408,26 +388,47 @@ router.delete("/delete_order/:orderId", async (req, res) => {
             return res.status(400).json({ success: false, message: "Order ID is required" });
         }
 
-        const deleteOrderQuery = `DELETE FROM orders WHERE id = ?`;
-        const deleteResult = await executeQuery(deleteOrderQuery, [orderId]);
+        // SQL query to DELETE from order_products table to remove product details
+        const cancelOrderProductsQuery = `
+            DELETE FROM order_products
+            WHERE order_id = ?
+        `;
 
-        if (deleteResult.affectedRows > 0) {
-            console.log(`Deleted order with ID: ${orderId}`);
-            res.json({ success: true, message: "Order deleted successfully for order ID: " + orderId });
+        // Execute the query to cancel order products (DELETE instead of UPDATE)
+        const cancelProductsResult = await executeQuery(cancelOrderProductsQuery, [orderId]);
+        console.log("Order Products Cancel Result:", cancelProductsResult);
+
+        // SQL query to update orders table to set total_amount to 0 and cancelled to 'Yes'
+        const cancelOrdersTableQuery = `
+            UPDATE orders
+            SET total_amount = 0.0,
+            cancelled = 'Yes'
+            WHERE id = ?
+        `;
+
+
+        // Execute the query to cancel order in orders table
+        const cancelOrdersResult = await executeQuery(cancelOrdersTableQuery, [orderId]);
+        console.log("Order Table Cancel Result:", cancelOrdersResult);
+
+        if (cancelOrdersResult.affectedRows > 0) { // Check if order in 'orders' table was updated
+            console.log(`Cancelled order with ID: ${orderId}`);
+            res.json({ success: true, message: "Order cancelled successfully for order ID: " + orderId });
         } else {
-            res.status(404).json({ success: false, message: "Order not found or already deleted" });
+            res.status(404).json({ success: false, message: "Order not found or already cancelled" });
         }
 
     } catch (error) {
-        console.error("Error deleting order:", error);
+        console.error("Error cancelling order:", error);
         res.status(500).json({ success: false, message: "Internal Server Error", error: error });
     }
 });
 
+
 // --- 2. ADD Product to Order (New Endpoint) ---
 router.post("/add-product-to-order", async (req, res) => {
     try {
-        const { orderId, productId, quantity, price, name , category } = req.body;
+        const { orderId, productId, quantity, price, name, category } = req.body;
 
         // --- Input Validation ---
         if (!orderId || !productId || quantity === undefined || price === undefined) {
@@ -437,7 +438,7 @@ router.post("/add-product-to-order", async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid data types: orderId and productId must be numbers, quantity must be a positive number, and price must be a non-negative number." });
         }
 
-        // --- Check if Order and Product Exist (Optional but recommended for data integrity) ---
+        // --- Check if Order and Product Exist ---
         const orderExistsQuery = `SELECT id FROM orders WHERE id = ?`;
         const productExistsQuery = `SELECT id FROM products WHERE id = ?`;
 
@@ -451,41 +452,54 @@ router.post("/add-product-to-order", async (req, res) => {
             return res.status(400).json({ success: false, message: `Product with ID ${productId} not found.` });
         }
 
-
         // --- Check if the product is already in the order ---
-        const productAlreadyInOrderQuery = `SELECT * FROM order_products WHERE order_id = ? AND product_id = ?`;
+        const productAlreadyInOrderQuery = `SELECT quantity FROM order_products WHERE order_id = ? AND product_id = ?`;
         const productInOrderResult = await executeQuery(productAlreadyInOrderQuery, [orderId, productId]);
 
         if (productInOrderResult.length > 0) {
-            return res.status(409).json({ // 409 Conflict status code
-                success: false,
-                message: `Product with ID ${productId} is already in order ID ${orderId}. Please update quantity instead.`
-            });
-        }
+            // Update quantity if different
+            if (parseInt(productInOrderResult[0].quantity) !== parseInt(quantity)) {
+                const updateQuery = `
+                    UPDATE order_products 
+                    SET quantity = ?, price = ?
+                    WHERE order_id = ? AND product_id = ?
+                `;
+                await executeQuery(updateQuery, [quantity, price, orderId, productId]);
 
+                return res.json({
+                    success: true,
+                    message: "Product quantity updated"
+                });
+            } else {
+                return res.status(409).json({
+                    success: false,
+                    message: "Product already exists with same quantity"
+                });
+            }
+        }
 
         // --- Insert new order_product record ---
         const insertQuery = `
-            INSERT INTO order_products (order_id, product_id, quantity, price,name,category)
+            INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
             VALUES (?, ?, ?, ?, ?, ?)
         `;
-        const insertResult = await executeQuery(insertQuery, [orderId, productId, quantity, price,name,category]);
+        const insertResult = await executeQuery(insertQuery, [orderId, productId, quantity, price, name, category]);
 
         if (insertResult.affectedRows > 0) {
             console.log(`Product ID ${productId} added to order ID ${orderId}`);
-            res.status(201).json({ // 201 Created - successful creation
+            res.status(201).json({
                 success: true,
                 message: "Product added to order successfully",
-                newOrderProductId: insertResult.insertId // Optionally return the ID of the newly created order_product record
+                newOrderProductId: insertResult.insertId
             });
         } else {
             console.error("Failed to insert product into order");
-            res.status(500).json({ success: false, message: "Failed to add product to order" }); // 500 Internal Server Error
+            res.status(500).json({ success: false, message: "Failed to add product to order" });
         }
 
     } catch (error) {
         console.error("Error adding product to order:", error);
-        res.status(500).json({ success: false, message: "Internal Server Error", error: error }); // 500 Internal Server Error
+        res.status(500).json({ success: false, message: "Internal Server Error", error: error });
     }
 });
 

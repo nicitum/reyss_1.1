@@ -18,6 +18,7 @@ import { ipAddress } from "../../urls";
 import { useNavigation } from "@react-navigation/native";
 import moment from 'moment';
 import Toast from "react-native-toast-message";
+import { useFocusEffect } from '@react-navigation/native'; 
 
 const AdminAssignedUsersPage = () => {
     const [assignedUsers, setAssignedUsers] = useState([]);
@@ -30,34 +31,52 @@ const AdminAssignedUsersPage = () => {
     const [selectedOrderIds, setSelectedOrderIds] = useState({});
     const [selectAllOrders, setSelectAllOrders] = useState(false);
 
-    useEffect(() => {
-        const fetchInitialData = async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const userAuthToken = await AsyncStorage.getItem("userAuthToken");
-                if (!userAuthToken) {
-                    setError("User authentication token not found.");
-                    return;
+    useFocusEffect(
+        React.useCallback(() => {
+            const fetchInitialData = async () => {
+                setLoading(true);
+                setError(null);
+                try {
+                    const userAuthToken = await AsyncStorage.getItem("userAuthToken");
+                    if (!userAuthToken) {
+                        setError("User authentication token not found.");
+                        return;
+                    }
+        
+                    const decodedToken = jwtDecode(userAuthToken);
+                    const currentAdminId = decodedToken.id1;
+                    setAdminId(currentAdminId);
+        
+                    // Fetch all data in parallel
+                    await Promise.all([
+                        fetchAssignedUsers(currentAdminId, userAuthToken),
+                        fetchAMAdminOrders(currentAdminId, userAuthToken),
+                        fetchPMAdminOrders(currentAdminId, userAuthToken)
+                    ]);
+
+                    // Clear selected orders when refreshing
+                    setSelectedOrderIds({});
+                    setSelectAllOrders(false);
+        
+                } catch (err) {
+                    console.error("Error initializing data:", err);
+                    setError("Error loading data. Please try again.");
+                } finally {
+                    setLoading(false);
                 }
+            };
+        
+            fetchInitialData();
 
-                const decodedToken = jwtDecode(userAuthToken);
-                const currentAdminId = decodedToken.id1;
-                setAdminId(currentAdminId);
-
-                await fetchAssignedUsers(currentAdminId, userAuthToken);
-                await fetchAMAdminOrders(currentAdminId, userAuthToken);
-                await fetchPMAdminOrders(currentAdminId, userAuthToken);
-            } catch (err) {
-                console.error("Error initializing data:", err);
-                setError("Error loading data. Please try again.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchInitialData();
-    }, []);
+            // Optional: Return a cleanup function
+            return () => {
+                // Clean up any subscriptions or pending requests here
+                setAmAdminOrders([]);
+                setPmAdminOrders([]);
+                setAssignedUsers([]);
+            };
+        }, []) // Empty dependency array since we want to run this every time the screen focuses
+    );
 
     useEffect(() => {
         if (selectAllOrders) {
@@ -86,6 +105,7 @@ const AdminAssignedUsersPage = () => {
             }
 
             const responseData = await response.json();
+            console.log(responseData)
             if (responseData.success) {
                 setAssignedUsers(responseData.assignedUsers);
             } else {
@@ -114,6 +134,7 @@ const AdminAssignedUsersPage = () => {
             }
 
             const responseData = await response.json();
+            console.log('AM orders',responseData)
             if (responseData.success) {
                 filterAMOrdersByDate(responseData.orders);
             } else {

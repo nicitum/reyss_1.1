@@ -77,10 +77,11 @@ const PlaceOrderPage = ({ route }) => {
                 console.log("Selected Date Parameter:", selectedDate); // Log selectedDate
                 console.log("Date Parameter:", date);         // Log date parameter (should be same as selectedDate)
 
-                const formattedPreviousDate = moment(selectedDate).subtract(1, 'day').format("YYYY-DD-MM");
-                console.log("Formatted Previous Date:", formattedPreviousDate); // Log formattedPreviousDate
+                //const formattedPreviousDate = moment(selectedDate).subtract(1, 'day').format("YYYY-DD-MM");
+                //console.log("Formatted Previous Date:", formattedPreviousDate); // Log formattedPreviousDate
 
-                const apiUrl = `http://${ipAddress}:8090/order-by-date-shift?orderDate=${formattedPreviousDate}&orderType=${shiftType}&customerId=${customerId}`;
+               const apiUrl = `http://${ipAddress}:8090/most-recent-order?customerId=${customerId}&orderType=${shiftType}`;
+
                 console.log("API URL:", apiUrl); // Log the complete API URL
 
                 const orderResponse = await fetch(apiUrl, {
@@ -99,7 +100,7 @@ const PlaceOrderPage = ({ route }) => {
                     console.log("Previous day order details:", orderData);
 
                     try {
-                        const productsResponse = await fetch(`http://${ipAddress}:8090/order-products?orderId=${orderData.id}`, {
+                        const productsResponse = await fetch(`http://${ipAddress}:8090/order-products?orderId=${orderData.order.id}`, {
                             method: "GET",
                             headers: {
                                 Authorization: `Bearer ${userAuthToken}`,
@@ -108,7 +109,11 @@ const PlaceOrderPage = ({ route }) => {
                         });
 
                         if (!productsResponse.ok) {
-                            throw new Error(`Failed to fetch product details: ${productsResponse.statusText}`);
+
+                             // **MODIFIED ERROR HANDLING FOR productsResponse.ok = false**
+                            console.log("Failed to fetch product details for previous order, initializing with empty product list.");
+                            fetchedOrderDetails = { order: orderData, products: [] }; // Initialize with empty product list but keep order details if available
+                            
                         }
                         const productsData = await productsResponse.json();
                         console.log("Previous day order product details:", productsData);
@@ -123,9 +128,9 @@ const PlaceOrderPage = ({ route }) => {
                             text1: 'Fetch Error',
                             text2: "Failed to fetch product details for previous order."
                         });
-                        setError("Failed to fetch product details for previous order.");
-                        setLoading(false);
-                        return;
+                        fetchedOrderDetails = { order: orderData, products: [] };
+                
+                       
                     }
                 }
             }
@@ -188,11 +193,7 @@ const PlaceOrderPage = ({ route }) => {
             const updatedProducts = [...currentProducts, newProduct];
             setOrderDetails({ ...orderDetails, products: updatedProducts });
             setShowSearchModal(false);
-            Toast.show({
-                type: 'success',
-                text1: 'Product Added',
-                text2: `${product.name} has been added to the order.`
-            });
+           
         } catch (error) {
             console.error("Error adding product:", error);
             Toast.show({
@@ -296,6 +297,7 @@ const PlaceOrderPage = ({ route }) => {
                     type: 'success',
                     text1: 'Order Placed',
                     text2: "Order Placed successfully!"
+
                 });
                 //navigation.navigate("IndentPage");
                 navigation.navigate("IndentPage", { orderPlacedSuccessfully: true }); // ADDED parameter
@@ -406,7 +408,9 @@ const PlaceOrderPage = ({ route }) => {
                     </ScrollView>
                 )}
             </View>
-            <Toast config={toastConfig} />
+
+            
+            <Toast ref={(ref) => Toast.setRef(ref)} />
         </SafeAreaView>
     );
 };
