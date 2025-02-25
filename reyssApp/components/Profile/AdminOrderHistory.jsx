@@ -1,158 +1,331 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Toast from 'react-native-toast-message';
-import { jwtDecode } from 'jwt-decode';
-import moment from 'moment'; // Import moment if not already imported
-
-import { ipAddress } from '../../urls';
+import React, { useEffect, useState } from "react";
+import {
+    View,
+    Text,
+    ActivityIndicator,
+    StyleSheet,
+    TouchableOpacity,
+    ScrollView,
+    Alert,
+} from "react-native";
+import axios from "axios";
+import { ipAddress } from "../../urls";
+import { checkTokenAndRedirect } from "../../services/auth";
+import { useNavigation } from "@react-navigation/native";
+import Pagination from "../general/Pagination";
+import { jwtDecode } from "jwt-decode";
 
 const AdminOrderHistory = () => {
     const [orders, setOrders] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [navigation, setNavigation] = useState(useNavigation());
+    const [expandedOrderDetailsId, setExpandedOrderDetailsId] = useState(null);
+    const [orderDetails, setOrderDetails] = useState({});
 
-    useEffect(() => {
-        fetchAdminOrderHistory();
-    }, []);
+    // Pagination states
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalOrders, setTotalOrders] = useState(0);
+    const ITEMS_PER_PAGE = 10;
 
-    const fetchAdminOrderHistory = async () => {
-        setLoading(true);
-        setError(null);
+    const fetchOrders = async (page) => {
         try {
-            const token = await AsyncStorage.getItem("userAuthToken");
+            setLoading(true);
+            const token = await checkTokenAndRedirect(navigation);
+            if (!token) throw new Error("No authorization token found.");
+
             const decodedToken = jwtDecode(token);
             const adminId = decodedToken.id1;
 
-            const url = `http://${ipAddress}:8090/get-admin-orders/${adminId}`;
-            const headers = {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json",
-            };
+            const response = await axios.get(
+                `http://${ipAddress}:8090/get-admin-orders/${adminId}`, // **Admin-specific endpoint**
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                    params: {
+                        page: page,
+                        limit: ITEMS_PER_PAGE,
+                        orderBy: "DESC",
+                    },
+                }
+            );
 
-            const response = await fetch(url, { headers });
-            if (!response.ok) {
-                throw new Error(`Failed to fetch orders. Status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            setOrders(data.orders);
+            setOrders(response.data.orders);
+            setTotalOrders(response.data.count);
+            setTotalPages(Math.ceil(response.data.count / ITEMS_PER_PAGE));
+            console.log("FETCH ORDERS RESPONSE DATA.ORDERS:", response.data.orders); // Enhanced log - STEP 1
         } catch (error) {
-            setError(error.message || "Failed to fetch orders.");
-            Toast.show({ type: 'error', text1: 'Fetch Error', text2: error.message || "Failed to fetch orders." });
+            console.error("Error fetching admin orders:", error);
+            Alert.alert("Error", "Failed to fetch orders. Please try again.");
         } finally {
             setLoading(false);
         }
     };
 
-    const formatDate = (epochTimestamp) => {
-        if (!epochTimestamp) return 'N/A';
+    useEffect(() => {
+        fetchOrders(currentPage);
+    }, [currentPage]);
 
-        // **Parse epoch timestamp in seconds using moment.unix()**
-        const orderDateMoment = moment.unix(epochTimestamp);
-        console.log("DEBUG: Moment Object from Epoch (Seconds using .unix()):", orderDateMoment); // Debug log
-
-        // **Format to "Feb 22 2025" (MMM DD YYYY) format**
-        return orderDateMoment.format('MMM DD YYYY');
+    const handlePageChange = (newPage) => {
+        setCurrentPage(newPage);
     };
+
+    const fetchOrderProducts = async (orderId) => { // Parameter name updated to orderId
+        try {
+            const token = await checkTokenAndRedirect(navigation);
+            if (!token) throw new Error("No authorization token found.");
+
+            const response = await axios.get(
+                `http://${ipAddress}:8090/order-products?orderId=${orderId}`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            console.log('FETCH ORDER PRODUCTS RESPONSE DATA:', response.data);
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching order products:", error);
+            Alert.alert("Error", "Failed to fetch order details.");
+            return [];
+        }
+    };
+
+    const handleOrderDetailsPress = async (orderId) => { // Parameter name already orderId, no change needed
+        console.log("handleOrderDetailsPress for orderId:", orderId);
+        if (expandedOrderDetailsId === orderId) {
+            setExpandedOrderDetailsId(null);
+        } else {
+            setExpandedOrderDetailsId(orderId);
+            if (!orderDetails[orderId]) {
+                const products = await fetchOrderProducts(orderId);
+                setOrderDetails((prevDetails) => ({ ...prevDetails, [orderId]: products }));
+            }
+        }
+    };
+
+    const renderOrderDetails = (orderId) => {
+        const products = orderDetails[orderId];
+        if (!expandedOrderDetailsId || expandedOrderDetailsId !== orderId || !products) {
+            return null;
+        }
+
+        return (
+            <View style={detailStyles.orderDetailsContainer}>
+                <Text style={detailStyles.orderDetailsTitle}>Order Details:</Text>
+                {products.length > 0 ? (
+                    products.map((product, index) => (
+                        <View key={`${orderId}-${product.product_id}-${index}`} style={detailStyles.productDetailItem}>
+                            <Text style={detailStyles.productDetailText}>
+                                {product.name} - Qty: {product.quantity}, Price: ₹{product.price}, Cat: {product.category}
+                            </Text>
+                        </View>
+                    ))
+                ) : (
+                    <Text style={detailStyles.noProductsText}>No products found.</Text>
+                )}
+            </View>
+        );
+    };
+
+    if (loading) {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#ffcc00" />
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>
-            <Text style={styles.headerTitle}>Admin Order History</Text>
-
-            {loading && <ActivityIndicator size="large" color="#007bff" style={styles.loader} />}
-            {error && <Text style={styles.errorText}>{error}</Text>}
-
-            {!loading && !error && (
-                <ScrollView>
-                    <View style={styles.tableHeader}>
-                        <Text style={[styles.headerCell, styles.boldText]}>Order ID</Text>
-                        <Text style={[styles.headerCell, styles.boldText]}>Placed On</Text>
-                        <Text style={[styles.headerCell, styles.boldText, { flex: 1.2 }]}>Total Amount</Text>
-                        <Text style={[styles.headerCell, styles.boldText]}>Closed</Text>
-                    </View>
-
-                    {orders.length === 0 ? (
-                        <Text style={styles.noOrdersText}>No orders found.</Text>
-                    ) : (
-                        orders.map((item) => (
-                            <View key={item.id} style={styles.tableRow}>
-                                <Text style={styles.cell}>{item.id}</Text>
-                                <Text style={styles.cell}>{formatDate(item.placed_on)}</Text>
-                                <Text style={[styles.cell, { flex: 1.2 }]}>₹{item.total_amount ? parseFloat(item.total_amount).toFixed(2) : 'N/A'}</Text>
-                                <Text style={styles.cell}>{item.closed === 'yes' ? 'Yes' : 'Pending'}</Text>
+            <ScrollView>
+                {orders.length === 0 ? (
+                    <Text style={styles.noOrdersText}>No orders found.</Text>
+                ) : (
+                    <View style={styles.tableContainer}>
+                        <View style={styles.tableHeader}>
+                            <View style={[styles.headerCell, { flex: 0.8 }]}>
+                                <Text style={styles.headerText}>Date</Text>
                             </View>
-                        ))
-                    )}
-                </ScrollView>
-            )}
+                            <View style={[styles.headerCell, { flex: 1.2 }]}>
+                                <Text style={styles.headerText}>Order ID</Text>
+                            </View>
+                            <View style={[styles.headerCell, { flex: 1.2 }]}>
+                                <Text style={styles.headerText}>Customer Name</Text>
+                            </View>
+                            <View style={[styles.headerCell, { flex: 1 }]}>
+                                <Text style={styles.headerText}>Amount</Text>
+                            </View>
+                            <View style={[styles.headerCell, styles.actionCell, { flex: 0.8 }]}>
+                                <Text style={styles.headerText}>Details</Text>
+                            </View>
+                            <View style={[styles.headerCell, styles.statusCell, { flex: 1 }]}>
+                                <Text style={styles.headerText}>Status</Text>
+                            </View>
+                        </View>
 
-            <Toast ref={(ref) => Toast.setRef(ref)} />
+                        {orders.map((order) => (
+                            <View key={order.id}> {/* Corrected: key={order.id} */}
+                                <TouchableOpacity style={styles.tableRow} onPress={() => handleOrderDetailsPress(order.id)}> {/* Corrected: onPress={() => handleOrderDetailsPress(order.id)} */}
+                                    <View style={[styles.cell, { flex: 0.8 }]}>
+                                        <Text style={styles.cellText}>
+                                            {new Date(order.placed_on * 1000).toLocaleDateString(
+                                                "en-US",
+                                                {
+                                                    year: "numeric",
+                                                    month: "short",
+                                                    day: "numeric",
+                                                }
+                                            )}
+                                        </Text>
+                                    </View>
+                                    <View style={[styles.cell, { flex: 1.2 }]}>
+                                        <Text style={styles.cellText}>{order.id}</Text> {/* Corrected: Display order.id */}
+                                    </View>
+                                    <View style={[styles.cell, { flex: 1.2 }]}>
+                                        <Text style={styles.cellText}>{order.customer_id}</Text> {/* Corrected: Display order.id */}
+                                    </View>
+                                    <View style={[styles.cell, { flex: 1 }]}>
+                                        <Text style={styles.cellText}>₹{order.total_amount}</Text>
+                                    </View>
+                                    <View style={[styles.cell, styles.actionCell, { flex: 0.8 }]}>
+                                        <TouchableOpacity onPress={() => handleOrderDetailsPress(order.id)}> {/* Corrected: onPress={() => handleOrderDetailsPress(order.id)} */}
+                                            <Text style={styles.detailsButtonText}>{expandedOrderDetailsId === order.id ? "Hide" : "View"}</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                    <View style={[styles.cell, styles.statusCell, { flex: 1 }]}>
+                                        <Text style={styles.deliveryStatusText}>
+                                            {(order.delivery_status || 'pending').toUpperCase()}
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+                                {renderOrderDetails(order.id)} {/* Corrected: renderOrderDetails(order.id) */}
+                            </View>
+                        ))}
+                    </View>
+                )}
+
+                {orders.length > 0 && (
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalItems={totalOrders}
+                        onPageChange={handlePageChange}
+                        itemsLabel="Orders"
+                        primaryColor="#ffcc00"
+                        style={styles.paginationStyle}
+                    />
+                )}
+            </ScrollView>
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create({ // Compact Styles -  Re-applied
+    loadingContainer: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+    },
     container: {
         flex: 1,
-        padding: 15,
-        backgroundColor: '#f4f6f8', // Light grey background for the page
+        backgroundColor: "#fff",
     },
-    headerTitle: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: '#333', // Dark grey title text
-        marginBottom: 20,
-        textAlign: 'center',
+    tableContainer: {
+        margin: 10,
+        borderRadius: 5,
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: "#E0E0E0",
     },
-    loader: {
-        marginTop: 20,
-    },
-    errorText: {
-        color: 'red',
-        textAlign: 'center',
-        marginTop: 20,
+    noOrdersText: {
+        textAlign: "center",
+        fontSize: 16,
+        color: "#999",
+        marginTop: 30,
     },
     tableHeader: {
-        flexDirection: 'row',
-        backgroundColor: '#e0e0e0', // Light grey header background
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderColor: '#ccc',
+        flexDirection: "row",
+        backgroundColor: "#ffcc00",
+        paddingVertical: 10,
     },
     headerCell: {
         flex: 1,
-        fontSize: 16,
-        color: '#555', // Medium grey header text
-        textAlign: 'left',
-        paddingHorizontal: 10,
+        paddingHorizontal: 5,
     },
-    boldText: {
-        fontWeight: 'bold',
+    headerText: {
+        fontSize: 12,
+        fontWeight: "bold",
+        color: "#fff",
+        textAlign: "center",
     },
     tableRow: {
-        flexDirection: 'row',
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderColor: '#eee', // Very light grey row separator
-        backgroundColor: '#fff', // White background for rows
-        marginBottom: 2, // Slight margin between rows
-        borderRadius: 5, // Slightly rounded rows
-        elevation: 1, // Subtle shadow for row elevation
+        flexDirection: "row",
+        borderTopWidth: 1,
+        borderTopColor: "#E0E0E0",
+        backgroundColor: "#fff",
     },
     cell: {
         flex: 1,
+        paddingVertical: 8,
+        justifyContent: "center",
+    },
+    actionCell: {
+        width: 60,
+        alignItems: "center",
+    },
+    statusCell: {
+        width: 80,
+        alignItems: "center",
+    },
+    cellText: {
+        fontSize: 12,
+        color: "#333",
+        textAlign: "center",
+    },
+    detailsButtonText: {
+        fontSize: 11,
+        color: "#03A9F4",
+    },
+    deliveryStatusText: {
+        fontSize: 12,
+        color: "#333",
+        textAlign: "center",
+    },
+    paginationStyle: {
+        borderTopWidth: 1,
+        borderTopColor: "#E0E0E0",
+        paddingVertical: 10,
+    },
+});
+
+const detailStyles = StyleSheet.create({ // detailStyles - Re-applied (Compact)
+    orderDetailsContainer: {
+        padding: 10,
+        backgroundColor: '#f9f9f9',
+        borderBottomWidth: 1,
+        borderBottomColor: '#E0E0E0',
+    },
+    orderDetailsTitle: {
         fontSize: 14,
-        color: '#333', // Dark grey cell text
-        textAlign: 'left',
-        paddingHorizontal: 10,
+        fontWeight: 'bold',
+        marginBottom: 8,
+        color: '#333',
     },
-    noOrdersText: {
+    productDetailItem: {
+        paddingVertical: 6,
+        borderBottomWidth: 1,
+        borderBottomColor: '#ddd',
+        marginBottom: 6,
+    },
+    productDetailText: {
+        fontSize: 12,
+        color: '#555',
+    },
+    noProductsText: {
+        fontSize: 12,
+        color: '#777',
         textAlign: 'center',
-        color: '#777', // Light grey for "No orders" text
-        marginTop: 20,
-        fontSize: 16,
-    },
+        marginTop: 6,
+    }
 });
 
 export default AdminOrderHistory;

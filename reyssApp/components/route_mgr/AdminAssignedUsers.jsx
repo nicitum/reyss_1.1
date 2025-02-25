@@ -80,10 +80,12 @@ const AdminAssignedUsersPage = () => {
 
     useEffect(() => {
         if (selectAllOrders) {
-            let allPendingOrderIds = {};
-            amAdminOrders.filter(order => !order.approve_status).forEach(order => allPendingOrderIds[order.id] = true);
-            pmAdminOrders.filter(order => !order.approve_status).forEach(order => allPendingOrderIds[order.id] = true);
-            setSelectedOrderIds(allPendingOrderIds);
+            let allOrderIds = {};
+            // Include all AM orders regardless of status
+            amAdminOrders.forEach(order => allOrderIds[order.id] = true);
+            // Include all PM orders regardless of status
+            pmAdminOrders.forEach(order => allOrderIds[order.id] = true);
+            setSelectedOrderIds(allOrderIds);
         } else {
             setSelectedOrderIds({});
         }
@@ -655,7 +657,7 @@ const AdminAssignedUsersPage = () => {
                                     status={!!selectedOrderIds[order.id] ? 'checked' : 'unchecked'} // Use 'status' prop and ternary for checked state
                                     onPress={() => handleCheckboxChange(order.id, !selectedOrderIds[order.id])} // Use 'onPress' and toggle logic in handler
                                     style={styles.orderCheckbox}
-                                    disabled={order.approve_status === 'APPROVED' || order.approve_status === 'REJECTED'}
+                                    
                                 />
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.itemText}><Text style={styles.boldText}>Order ID:</Text> {order.id}</Text>
@@ -687,7 +689,8 @@ const AdminAssignedUsersPage = () => {
                                 status={!!selectedOrderIds[order.id] ? 'checked' : 'unchecked'}
                                 onPress={() => handleCheckboxChange(order.id, !selectedOrderIds[order.id])}
                                 style={styles.orderCheckbox}
-                                disabled={order.approve_status === 'APPROVED' || order.approve_status === 'REJECTED'}
+                              
+                                
                                 />
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.itemText}><Text style={styles.boldText}>Order ID:</Text> {order.id}</Text>

@@ -340,16 +340,28 @@ router.post("/order_update", async (req, res) => {
                     `;
                     await executeQuery(insertProductQuery, [orderId, product.product_id, quantity, price, product.name, product.category]);
                 } else {
+                    // Calculate the actual quantity difference
+                    const quantityDifference = quantity - currentQuantity;
+                    const quantityChange = quantityDifference !== 0 ? quantityDifference.toString() : null;
+                    
                     const updateProductQuery = `
                         UPDATE order_products
                         SET quantity = ?, 
                             price = ?,
-                            altered = ?
+                            altered = ?,
+                            quantity_change = ?
                         WHERE order_id = ? AND product_id = ?
                     `;
                     
                     let alteredStatus = currentQuantity !== quantity ? 'Yes' : 'No';
-                    await executeQuery(updateProductQuery, [quantity, price, alteredStatus, orderId, product.product_id]);
+                    await executeQuery(updateProductQuery, [
+                        quantity, 
+                        price, 
+                        alteredStatus,
+                        quantityChange,
+                        orderId, 
+                        product.product_id
+                    ]);
                 }
             }
         }
