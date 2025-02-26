@@ -113,6 +113,13 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                                 >
                                     <Text style={styles.subMenuText}>Manage Deliveries</Text>
                                 </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.subMenuItem}
+                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("PlaceOrderAdmin"); }}
+                                >
+                                    <Text style={styles.subMenuText}>PlaceOrderAdmin</Text>
+                                </TouchableOpacity>
                             </>
                         ) : (
                             // User Submenu

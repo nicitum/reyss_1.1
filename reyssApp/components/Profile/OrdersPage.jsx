@@ -12,24 +12,16 @@ import axios from "axios";
 import { ipAddress } from "../../urls";
 import { checkTokenAndRedirect } from "../../services/auth";
 import { useNavigation } from "@react-navigation/native";
-import Pagination from "../general/Pagination";
 
 const OrdersPage = () => {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [navigation, setNavigation] = useState(useNavigation()); // Correct navigation setup
+    const navigation = useNavigation();
     const [expandedOrderDetailsId, setExpandedOrderDetailsId] = useState(null);
     const [orderDetails, setOrderDetails] = useState({});
 
-    // Pagination states
-    const [currentPage, setCurrentPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [totalOrders, setTotalOrders] = useState(0);
-    const ITEMS_PER_PAGE = 10;
 
-   
-
-    const fetchOrders = async (page) => {
+    const fetchOrders = async () => {
         try {
             setLoading(true);
             const token = await checkTokenAndRedirect(navigation);
@@ -42,16 +34,13 @@ const OrdersPage = () => {
                         Authorization: `Bearer ${token}`,
                     },
                     params: {
-                        page: page,
-                        limit: ITEMS_PER_PAGE,
-                        orderBy: "DESC",
+                        orderBy: "DESC", // Keep orderBy if needed, remove pagination params
                     },
                 }
             );
 
             setOrders(response.data.orders);
-            setTotalOrders(response.data.count);
-            setTotalPages(Math.ceil(response.data.count / ITEMS_PER_PAGE));
+            console.log(response.data.orders)
         } catch (error) {
             console.error("Error fetching order history:", error);
             Alert.alert("Error", "Failed to fetch orders. Please try again.");
@@ -61,12 +50,9 @@ const OrdersPage = () => {
     };
 
     useEffect(() => {
-        fetchOrders(currentPage);
-    }, [currentPage]); // Refetch when page changes
+        fetchOrders();
+    }, []); // Fetch orders on component mount
 
-    const handlePageChange = (newPage) => {
-        setCurrentPage(newPage);
-    };
 
     const fetchOrderProducts = async (orderId) => {
         try {
@@ -84,18 +70,18 @@ const OrdersPage = () => {
                     },
                 }
             );
-            return response.data; // Return product list
+            return response.data;
         } catch (error) {
             console.error("Error fetching order products:", error);
             Alert.alert("Error", "Failed to fetch order details.");
-            return []; // Return empty array in case of error
+            return [];
         }
     };
 
 
     const handleOrderDetailsPress = async (orderId) => {
         if (expandedOrderDetailsId === orderId) {
-            setExpandedOrderDetailsId(null); // Collapse if already expanded
+            setExpandedOrderDetailsId(null);
         } else {
             setExpandedOrderDetailsId(orderId);
             if (!orderDetails[orderId]) {
@@ -201,18 +187,6 @@ const OrdersPage = () => {
                         ))}
                     </View>
                 )}
-
-                {orders.length > 0 && (
-                    <Pagination
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        totalItems={totalOrders}
-                        onPageChange={handlePageChange}
-                        itemsLabel="Orders"
-                        primaryColor="#ffcc00"
-                        style={styles.paginationStyle}
-                    />
-                )}
             </ScrollView>
         </View>
     );
@@ -288,10 +262,6 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: "#333",
         textAlign: "center",
-    },
-    paginationStyle: {
-        borderTopWidth: 1,
-        borderTopColor: "#E0E0E0",
     },
     orderDetailsContainer: {
         padding: 15,

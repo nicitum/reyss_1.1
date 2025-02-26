@@ -12,9 +12,9 @@ router.post("/update-order-status", async (req, res) => {
             return res.status(400).json({ message: "id and approved_status are required" });
         }
 
-        // Update query
-        const query = "UPDATE orders SET approve_status = ? WHERE id = ?";
-        const values = [approve_status, id];
+        // Update query with conditional altered status
+        const query = "UPDATE orders SET approve_status = ?, altered = CASE WHEN ? = 'Accepted' THEN 'No' ELSE altered END WHERE id = ?";
+        const values = [approve_status, approve_status, id];
 
         // Execute the query
         const result = await executeQuery(query, values);
@@ -514,6 +514,67 @@ router.post("/add-product-to-order", async (req, res) => {
         res.status(500).json({ success: false, message: "Internal Server Error", error: error });
     }
 });
+
+router.post("/on-behalf", async (req, res) => {
+    try {
+        const { customer_id, order_type, reference_order_id } = req.body;
+
+        if (!customer_id || !order_type || !reference_order_id) {
+            return res.status(400).json({
+                message: "customer_id, order_type, and reference_order_id are required"
+            });
+        }
+
+        // 1. Place Admin Order and get new_order_id
+        const insertOrderQuery = `
+            INSERT INTO orders (customer_id, total_amount, order_type, placed_on, created_at, updated_at)
+            VALUES (?, 0.0, ?, UNIX_TIMESTAMP(), UNIX_TIMESTAMP(), UNIX_TIMESTAMP());
+        `;
+        const orderValues = [customer_id, order_type];
+        const insertOrderResult = await executeQuery(insertOrderQuery, orderValues);
+        const newOrderId = insertOrderResult.insertId;
+
+        if (!newOrderId) {
+            return res.status(500).json({ message: "Failed to create new order." });
+        }
+
+        // 2. Insert Order Products from reference order
+        const insertOrderProductsQuery = `
+            INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
+            SELECT ?, product_id, quantity, price, name, category
+            FROM order_products
+            WHERE order_id = ?
+        `;
+        const orderProductsValues = [newOrderId, reference_order_id];
+        await executeQuery(insertOrderProductsQuery, orderProductsValues);
+
+        // 3. Update total_amount in orders table
+        const updateOrderTotalQuery = `
+            UPDATE orders
+            SET total_amount = (
+                SELECT SUM(quantity * price)
+                FROM order_products
+                WHERE order_id = ?
+            )
+            WHERE id = ?
+        `;
+        const updateTotalValues = [newOrderId, newOrderId];
+        await executeQuery(updateOrderTotalQuery, updateTotalValues);
+
+        return res.status(201).json({
+            message: "Admin order placed successfully with products copied.",
+            new_order_id: newOrderId
+        });
+
+    } catch (error) {
+        console.error("Error placing admin order with products:", error);
+        return res.status(500).json({
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+});
+
 
 module.exports = router;
 

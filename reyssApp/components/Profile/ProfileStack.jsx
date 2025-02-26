@@ -6,6 +6,7 @@ import DeliveryStatusUpdate from './DeliveryStatusUpdate';
 import UpdateOrderScreen from './UpdateOrders';
 import UpdateOrdersU from './UpdateOrdersU';
 import AdminOrderHistory from './AdminOrderHistory';
+import PlaceOrderAdmin from './PlaceOrderAdmin';
 
 const Stack = createStackNavigator();
 
@@ -44,6 +45,12 @@ const ProfileStack = () => {
         name="AdminOrderHistory" 
         component={AdminOrderHistory} 
         options={{ title: 'Admin Order History' }} 
+      />
+
+      <Stack.Screen 
+        name="PlaceOrderAdmin" 
+        component={PlaceOrderAdmin} 
+        options={{ title: 'Place Order Admin' }} 
       />
 
 
