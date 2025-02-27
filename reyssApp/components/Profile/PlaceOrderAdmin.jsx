@@ -2,12 +2,12 @@ import React, { useState, useEffect } from "react"
 import { View, ScrollView, Text, StyleSheet, SafeAreaView } from "react-native"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import { jwtDecode } from "jwt-decode"
-import { Checkbox, Button, Snackbar } from "react-native-paper" // Import Snackbar
+import { Checkbox, Button, Snackbar } from "react-native-paper"
+import Toast from 'react-native-toast-message';
 
 import { ipAddress } from "../../urls"
 
 const PlaceOrderAdmin = () => {
-  // Keep all original state and functions exactly as they were
   const [assignedUsers, setAssignedUsers] = useState([])
   const [error, setError] = useState(null)
   const [loadingUsers, setLoadingUsers] = useState(false)
@@ -20,10 +20,9 @@ const PlaceOrderAdmin = () => {
   const [recentOrderIds, setRecentOrderIds] = useState({})
   const [selectAll, setSelectAll] = useState(false)
   const [selectedUsers, setSelectedUsers] = useState([])
-  const [successMessage, setSuccessMessage] = useState(null) // Add success message state
-  const [snackbarVisible, setSnackbarVisible] = useState(false) // Add snackbar visibility state
+  const [successMessage, setSuccessMessage] = useState(null)
+  const [snackbarVisible, setSnackbarVisible] = useState(false)
 
-  // Keep all original functions exactly as they were
   const fetchAssignedUsers = async () => {
     setLoadingUsers(true)
     setError(null)
@@ -50,10 +49,20 @@ const PlaceOrderAdmin = () => {
         })
       } else {
         setError(responseData.message || "Failed to fetch assigned users.")
+        Toast.show({
+          type: 'error',
+          text1: 'Fetch Users Failed',
+          text2: responseData.message || "Failed to fetch assigned users."
+        });
       }
     } catch (err) {
       console.error("Error fetching assigned users:", err)
       setError("Error fetching assigned users. Please try again.")
+      Toast.show({
+        type: 'error',
+        text1: 'Fetch Users Error',
+        text2: "Error fetching assigned users. Please try again."
+      });
     } finally {
       setLoadingUsers(false)
     }
@@ -126,34 +135,93 @@ const PlaceOrderAdmin = () => {
   }
 
   const handleBulkPlaceOrder = async (orderType) => {
-    setPlacingOrder((prevPlacing) => ({ ...prevPlacing, [orderType]: true }))
-    setPlacementError((prevErrors) => ({ ...prevErrors, [orderType]: null }))
+    setPlacingOrder((prevPlacing) => ({ ...prevPlacing, [orderType]: true }));
+    setPlacementError((prevErrors) => ({ ...prevErrors, [orderType]: null }));
+
+    let bulkOrderSuccess = true; // Assume ALL succeed initially
+    let individualOrderResults = [];
+    let hasAnySuccess = false; // Track if at least ONE order succeeded in bulk
+
+    console.log(`Starting bulk ${orderType} order. Selected users:`, selectedUsers);
 
     try {
-      const orderPromises = selectedUsers.map((customerId) => placeAdminOrder(customerId, orderType))
+      const orderPromises = selectedUsers.map(async (customerId) => {
+        try {
+          await placeAdminOrder(customerId, orderType);
+          hasAnySuccess = true; // Set if ANY individual order is successful
+          return { customerId, success: true };
+        } catch (error) {
+          bulkOrderSuccess = false; // Set to FALSE if ANY order fails
+          console.log(`Individual ${orderType} order FAILED for Customer ID: ${customerId}. Error:`, error);
+          return { customerId, success: false, error: error.message };
+        }
+      });
 
-      await Promise.all(orderPromises)
+      individualOrderResults = await Promise.all(orderPromises);
+      console.log("Bulk order promises resolved. Results:", individualOrderResults);
 
-      // After placing orders, refresh the order statuses
-      selectedUsers.forEach((customerId) => fetchOrderStatuses(customerId))
+      selectedUsers.forEach((customerId) => fetchOrderStatuses(customerId));
 
-      // Clear selected users and update UI
-      setSelectedUsers([])
-      setSelectAll(false)
+      setSelectedUsers([]);
+      setSelectAll(false);
 
-      setSuccessMessage(`Successfully placed ${orderType} orders for selected users.`) // Set success message
-      setSnackbarVisible(true) // Show snackbar
+      console.log(`Bulk ${orderType} order processing finished. bulkOrderSuccess:`, bulkOrderSuccess, "hasAnySuccess:", hasAnySuccess);
+
+
+      if (bulkOrderSuccess && hasAnySuccess) { // <---- Modified condition - FULL Success
+        const successMessageText = `Successfully placed ${orderType} orders for ALL selected users.`;
+        setSuccessMessage(successMessageText);
+        setSnackbarVisible(true);
+        Toast.show({
+          type: 'success',
+          text1: 'Bulk Order Success',
+          text2: successMessageText,
+        });
+      } else if (!bulkOrderSuccess && hasAnySuccess) { // <---- Condition for PARTIAL Success (but some failures)
+          const partialSuccessMessage = `Bulk ${orderType} orders partially placed. Some orders failed. See user cards for details.`;
+          setError(partialSuccessMessage);
+          Toast.show({
+              type: 'error', // Using 'error' type for partial failure as well, as per request
+              text1: 'Bulk Order Partially Failed',
+              text2: partialSuccessMessage,
+          });
+
+
+      }
+      else { //  <---- Condition for FULL Bulk Failure (or no success at all)
+        const errorMessageText = `Failed to place ${orderType} orders for ALL selected users. See details in user cards.`;
+        setError(errorMessageText);
+        Toast.show({
+          type: 'error',
+          text1: 'Bulk Order Failed', //  Using 'error' type for full failure
+          text2: errorMessageText,
+        });
+        individualOrderResults.forEach(result => {
+          if (!result.success) {
+            console.error(`Bulk ${orderType} order failed for Customer ID: ${result.customerId}. Error: ${result.error}`);
+          }
+        });
+      }
+
+
     } catch (err) {
-      console.error(`Error placing ${orderType} orders:`, err)
+      console.error(`Error during bulk ${orderType} order processing:`, err);
       setPlacementError((prevErrors) => ({
         ...prevErrors,
-        [orderType]: "Failed to place orders. Please try again.",
-      }))
-      setError(`Failed to place ${orderType} orders. Please check console for details.`) // Set general error
+        [orderType]: "Bulk order processing error. Please try again.",
+      }));
+      setError(`Bulk order processing error. Please check console.`);
+      Toast.show({
+        type: 'error',
+        text1: 'Bulk Order Processing Error',
+        text2: `Bulk order processing error. Check console.`,
+      });
+      bulkOrderSuccess = false;
     } finally {
-      setPlacingOrder((prevPlacing) => ({ ...prevPlacing, [orderType]: false }))
+      setPlacingOrder((prevPlacing) => ({ ...prevPlacing, [orderType]: false }));
     }
-  }
+  };
+
 
   const placeAdminOrder = async (customerId, orderType) => {
     setPlacingOrder((prevState) => ({ ...prevState, [customerId]: true }))
@@ -184,21 +252,33 @@ const PlaceOrderAdmin = () => {
 
       if (!response.ok) {
         const message = `Failed to place ${orderType} order for customer ${customerId}. Status: ${response.status}`
-        throw new Error(message)
+        throw new Error(message) // IMPORTANT: Throw error on failure!
       }
 
       const responseData = await response.json()
       console.log(`Place ${orderType} Order Response:`, responseData)
       fetchOrderStatuses(customerId)
-      setSuccessMessage(`${orderType} Order placed successfully for Customer ID: ${customerId}`) // Set success message
-      setSnackbarVisible(true) // Show snackbar
+      const successMessageText = `${orderType} Order placed successfully for Customer ID: ${customerId}`;
+      setSuccessMessage(successMessageText)
+      setSnackbarVisible(true)
+      Toast.show({
+        type: 'success',
+        text1: 'Order Placed',
+        text2: successMessageText
+      });
     } catch (err) {
       console.error(`Error placing ${orderType} order for customer ${customerId}:`, err)
       setPlacementError((prevState) => ({
         ...prevState,
         [customerId]: `Error placing ${orderType} order: ${err.message}. Please try again.`,
       }))
-      setError(`Failed to place ${orderType} order. Please see customer specific errors.`) // Set general error
+      setError(`Failed to place ${orderType} order. Please see customer specific errors.`)
+      Toast.show({
+        type: 'error',
+        text1: 'Order Placement Error',
+        text2: `Failed to place ${orderType} order. Please see customer specific errors.`
+      });
+      throw err; // Re-throw the error to be caught in handleBulkPlaceOrder
     } finally {
       setPlacingOrder((prevState) => ({ ...prevState, [customerId]: false }))
     }
@@ -214,6 +294,11 @@ const PlaceOrderAdmin = () => {
         if (!storedToken) {
           setError("User authentication token not found.")
           setLoadingToken(false)
+          Toast.show({
+            type: 'error',
+            text1: 'Authentication Error',
+            text2: "User authentication token not found."
+          });
           return
         }
 
@@ -225,6 +310,11 @@ const PlaceOrderAdmin = () => {
       } catch (tokenError) {
         console.error("Error fetching or decoding token:", tokenError)
         setError("Failed to authenticate admin. Please try again.")
+        Toast.show({
+          type: 'error',
+          text1: 'Authentication Error',
+          text2: "Failed to authenticate admin. Please try again."
+        });
       } finally {
         setLoadingToken(false)
       }
@@ -239,7 +329,6 @@ const PlaceOrderAdmin = () => {
     }
   }, [currentAdminId, userAuthToken])
 
-  // Keep all original helper functions
   const getOrderStatusDisplay = (order) => {
     if (order) {
       const placedDate = new Date(order.placed_on * 1000).toLocaleDateString()
@@ -268,7 +357,7 @@ const PlaceOrderAdmin = () => {
     return "No"
   }
 
-  const onDismissSnackbar = () => setSnackbarVisible(false) // Snackbar dismiss function
+  const onDismissSnackbar = () => setSnackbarVisible(false)
 
   return (
     <SafeAreaView style={styles.container}>
@@ -299,7 +388,7 @@ const PlaceOrderAdmin = () => {
           <View style={styles.bulkActionsContainer}>
             <Button
               mode="contained"
-              onPress={() => handleBulkPlaceOrder("AM")} // Connect bulk AM order function
+              onPress={() => handleBulkPlaceOrder("AM")}
               style={styles.bulkActionButton}
               disabled={selectedUsers.length === 0}
             >
@@ -307,7 +396,7 @@ const PlaceOrderAdmin = () => {
             </Button>
             <Button
               mode="contained"
-              onPress={() => handleBulkPlaceOrder("PM")} // Connect bulk PM order function
+              onPress={() => handleBulkPlaceOrder("PM")}
               style={styles.bulkActionButton}
               disabled={selectedUsers.length === 0}
             >
@@ -334,7 +423,7 @@ const PlaceOrderAdmin = () => {
                 <View style={styles.cardHeader}>
                   <Checkbox
                     status={isUserSelected ? "checked" : "unchecked"}
-                    onPress={() => handleCheckboxChange(user.cust_id)} // Connect user checkbox function
+                    onPress={() => handleCheckboxChange(user.cust_id)}
                   />
                   <Text style={styles.customerId}>Customer ID: {user.cust_id}</Text>
                 </View>
@@ -353,7 +442,6 @@ const PlaceOrderAdmin = () => {
                     >
                       <Text>Today: {getHasOrderTodayDisplay(amOrderStatus, "AM")}</Text>
                     </View>
-                    {/* REMOVED INDIVIDUAL PLACE AM ORDER BUTTON */}
                   </View>
 
                   <View style={styles.divider} />
@@ -371,7 +459,6 @@ const PlaceOrderAdmin = () => {
                     >
                       <Text>Today: {getHasOrderTodayDisplay(pmOrderStatus, "PM")}</Text>
                     </View>
-                    {/* REMOVED INDIVIDUAL PLACE PM ORDER BUTTON */}
                   </View>
                 </View>
               </View>
@@ -385,6 +472,7 @@ const PlaceOrderAdmin = () => {
           )}
         </ScrollView>
       )}
+      <Toast />
     </SafeAreaView>
   )
 }

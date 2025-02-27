@@ -78,7 +78,7 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct }) => {
 
     if (selectedCategory) {
       filtered = filtered.filter((product) =>
-        product.category.toLowerCase().includes(selectedCategory.toLowerCase())
+        product.category.toLowerCase() === selectedCategory.toLowerCase()
       );
     }
 

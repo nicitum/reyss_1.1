@@ -26,6 +26,7 @@ const ProfilePage = ({ setIsLoggedIn }) => {
         content: null,
     });
     const [isOrdersSubMenuOpen, setIsOrdersSubMenuOpen] = useState(false);
+    const [isReportsSubMenuOpen, setIsReportsSubMenuOpen] = useState(false); // New state for Reports submenu
 
     useEffect(() => {
         const getUserRole = async () => {
@@ -56,10 +57,23 @@ const ProfilePage = ({ setIsLoggedIn }) => {
     const toggleOrdersSubMenu = () => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setIsOrdersSubMenuOpen(!isOrdersSubMenuOpen);
+        setIsReportsSubMenuOpen(false); // Close Reports submenu if Orders is opened
     };
+
+    const toggleReportsSubMenu = () => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setIsReportsSubMenuOpen(!isReportsSubMenuOpen);
+        setIsOrdersSubMenuOpen(false); // Close Orders submenu if Reports is opened
+    };
+
 
     const navigateToAdminOrders = () => {
         toggleOrdersSubMenu();
+    };
+
+    const navigateToLoadingSlip = () => {
+        toggleReportsSubMenu();
+        navigation.navigate("LoadingSlip"); // Navigate to LoadingSlip screen
     };
 
 
@@ -80,7 +94,7 @@ const ProfilePage = ({ setIsLoggedIn }) => {
 
                 <TouchableOpacity
                     style={styles.menuItem}
-                    onPress={toggleOrdersSubMenu} // Toggle submenu for both admin and user
+                    onPress={toggleOrdersSubMenu}
                 >
                     <View style={styles.menuIconText}>
                         <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
@@ -89,7 +103,6 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     <MaterialIcons name={isOrdersSubMenuOpen ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={24} color="#ffcc00" />
                 </TouchableOpacity>
 
-                {/* Orders Submenu - Conditional based on User Role */}
                 {isOrdersSubMenuOpen && (
                     <View style={styles.subMenu}>
                         {userRole === "admin" ? (
@@ -118,7 +131,7 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                                     style={styles.subMenuItem}
                                     onPress={() => { navigateToAdminOrders(); navigation.navigate("PlaceOrderAdmin"); }}
                                 >
-                                    <Text style={styles.subMenuText}>PlaceOrderAdmin</Text>
+                                    <Text style={styles.subMenuText}>On Behalf</Text>
                                 </TouchableOpacity>
                             </>
                         ) : (
@@ -147,6 +160,30 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     </View>
                 )}
 
+                {userRole === "admin" && ( // Conditionally render "Reports" menu for admin only
+                    <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={toggleReportsSubMenu}
+                    >
+                        <View style={styles.menuIconText}>
+                            <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                            <Text style={styles.menuText}>Reports</Text>
+                        </View>
+                        <MaterialIcons name={isReportsSubMenuOpen ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={24} color="#ffcc00" />
+                    </TouchableOpacity>
+                )}
+
+                {isReportsSubMenuOpen && userRole === "admin" && ( // Conditionally render Reports submenu for admin only
+                    <View style={styles.subMenu}>
+                        <TouchableOpacity
+                            style={styles.subMenuItem}
+                            onPress={navigateToLoadingSlip}
+                        >
+                            <Text style={styles.subMenuText}>Loading Slip</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
 
                 <TouchableOpacity style={styles.menuItem} onPress={() => openModal(PayHereContent)}>
                     <View style={styles.menuIconText}>
@@ -163,16 +200,6 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     </View>
                     <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
                 </TouchableOpacity>
-
-                {/* Delivery Status Update - Now for all users - kept outside as per original structure if needed separately*/}
-                {/* <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate("DeliveryStatusUpdate")}>
-                    <View style={styles.menuIconText}>
-                        <MaterialIcons name="delivery-dining" size={24} color="#ffcc00" />
-                        <Text style={styles.menuText}>Delivery Status Update</Text>
-                    </View>
-                    <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
-                </TouchableOpacity> */}
-
 
                 <TouchableOpacity style={styles.menuItem}>
                     <View style={styles.menuIconText}>
@@ -194,11 +221,11 @@ const ProfilePage = ({ setIsLoggedIn }) => {
             <ProfileModal visible={modalData.visible} onClose={closeModal} content={modalData.content} />
 
             <View style={styles.logoutSection}>
-                <View style={styles.passwordChangeButtonWrapper}>
-                    <PasswordChangeButton />
+                <View style={styles.buttonContainer}>
+                    <PasswordChangeButton style={styles.actionButton} />
                 </View>
-                <View style={styles.logoutButtonWrapper}>
-                    <LogOutButton navigation={navigation} />
+                <View style={styles.buttonContainer}>
+                    <LogOutButton navigation={navigation} style={styles.actionButton} />
                 </View>
             </View>
 
@@ -275,18 +302,24 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: "#555",
     },
-    logoutSection: {
-        marginTop: 20,
-        paddingHorizontal: 10,
-        paddingBottom: 20,
-        flexDirection: "column",
-        alignItems: "stretch",
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: '#f0f0f0',
-    },
+   // Replace the related styles in your StyleSheet:
+        logoutSection: {
+            padding: 20,
+            paddingBottom: 30,
+            backgroundColor: '#f0f0f0',
+            width: '100%',
+        },
+        buttonContainer: {
+            marginVertical: 8,
+            minHeight: 45, // Ensure minimum height for buttons
+            width: '100%',
+        },
+        actionButton: {
+            width: '100%',
+            minHeight: 45,
+            marginVertical: 5,
+        },
+
     logoutButtonWrapper: {
         marginBottom: 10,
         paddingHorizontal: 10,

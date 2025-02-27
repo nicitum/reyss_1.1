@@ -7,6 +7,7 @@ import UpdateOrderScreen from './UpdateOrders';
 import UpdateOrdersU from './UpdateOrdersU';
 import AdminOrderHistory from './AdminOrderHistory';
 import PlaceOrderAdmin from './PlaceOrderAdmin';
+import LoadingSlip from './LoadingSlip';
 
 const Stack = createStackNavigator();
 
@@ -50,7 +51,13 @@ const ProfileStack = () => {
       <Stack.Screen 
         name="PlaceOrderAdmin" 
         component={PlaceOrderAdmin} 
-        options={{ title: 'Place Order Admin' }} 
+        options={{ title: 'On Behalf' }} 
+      />
+
+      <Stack.Screen 
+        name="LoadingSlip" 
+        component={LoadingSlip} 
+        options={{ title: 'LoadingSlip' }} 
       />
 
 

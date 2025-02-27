@@ -89,7 +89,8 @@ const UpdateOrderScreen = () => {
                 return orderDateFormatted === todayFormatted; // Compare formatted dates
             });
 
-            setOrders(todaysOrders); // Set the filtered orders
+            setOrders(todaysOrders); 
+            console.log('todayssss order',todaysOrders)// Set the filtered orders
 
         } catch (fetchOrdersError) {
             console.error("FETCH ADMIN ORDERS - Fetch Error:", fetchOrdersError);

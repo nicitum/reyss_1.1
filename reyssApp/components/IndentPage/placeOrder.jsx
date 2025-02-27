@@ -117,10 +117,38 @@ const PlaceOrderPage = ({ route }) => {
                         }
                         const productsData = await productsResponse.json();
                         console.log("Previous day order product details:", productsData);
+
+                        const filteredProducts = productsData.filter(product => {
+                            if (!product.name) {
+                                console.warn("Missing product name:", product);
+                                return false;
+                            }
+                            
+                            const productNameLower = product.name.trim().toLowerCase();
+
+                            // If it contains "butter milk", always include it
+                            if (productNameLower.includes("butter milk")) {
+                                return true;
+                            }
+
+                            // Exclude if it contains "ghee" or "butter"
+                            if (productNameLower.includes("ghee") || productNameLower.includes("butter")) {
+                                return false;
+                            }
+
+                            // Include everything else
+                            return true;
+                        });
+
+                        console.log('Filtered products:', filteredProducts);
+
                         fetchedOrderDetails = {
                             order: orderData,
-                            products: productsData,
+                            products: filteredProducts,
                         };
+
+                        
+
                     } catch (productFetchError) {
                         console.error("Error fetching product details:", productFetchError);
                         Toast.show({
@@ -129,8 +157,6 @@ const PlaceOrderPage = ({ route }) => {
                             text2: "Failed to fetch product details for previous order."
                         });
                         fetchedOrderDetails = { order: orderData, products: [] };
-                
-                       
                     }
                 }
             }

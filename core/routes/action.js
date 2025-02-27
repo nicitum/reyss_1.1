@@ -540,10 +540,13 @@ router.post("/on-behalf", async (req, res) => {
 
         // 2. Insert Order Products from reference order
         const insertOrderProductsQuery = `
-            INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
-            SELECT ?, product_id, quantity, price, name, category
-            FROM order_products
-            WHERE order_id = ?
+        INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
+        SELECT ?, product_id, quantity, price, name, category
+        FROM order_products
+        WHERE order_id = ?
+        AND LOWER(name) NOT LIKE '%ghee%' 
+        AND LOWER(name) NOT LIKE '%butter%' 
+        OR LOWER(name) LIKE '%butter milk%'  -- Allow "butter milk"
         `;
         const orderProductsValues = [newOrderId, reference_order_id];
         await executeQuery(insertOrderProductsQuery, orderProductsValues);
