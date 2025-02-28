@@ -578,6 +578,62 @@ router.post("/on-behalf", async (req, res) => {
     }
 });
 
+// Revised endpoint to update loading_slip status (following provided structure)
+router.post('/update-loading-slip-status', async (req, res) => { // Changed to POST and removed :orderId from path
+    try {
+        const { orderId } = req.body; // Expecting orderId in request body
+
+        // Validate input
+        if (!orderId) {
+            return res.status(400).json({ message: "Order ID is required in the request body" }); // More specific message
+        }
+
+        // Update query
+        const query = 'UPDATE orders SET loading_slip = ? WHERE id = ?';
+        const values = ['Yes', orderId];
+
+        // Execute the query using executeQuery
+        const result = await executeQuery(query, values);
+
+        if (result.affectedRows > 0) {
+            return res.status(200).json({ message: "Loading slip status updated successfully." });
+        } else {
+            return res.status(404).json({ message: "Order not found" });
+        }
+    } catch (error) {
+        console.error("Error updating loading slip status:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+
+router.get('/credit-limit', async (req, res) => {
+    try {
+        const { customerId } = req.query; // Expecting customerId as a query parameter, e.g., /credit-limit?customerId=123
+
+        // Validate input
+        if (!customerId) {
+            return res.status(400).json({ message: "Customer ID is required as a query parameter" });
+        }
+
+        const query = 'SELECT credit_limit FROM credit_limit WHERE customer_id = ?'; // Assuming table name is 'credit_limit' and columns are 'customer_id' and 'credit_limit'
+        const values = [customerId];
+
+        const result = await executeQuery(query, values);
+
+        if (result.length > 0) {
+            // Assuming credit_limit is the first column selected
+            const creditLimit = result[0].credit_limit;
+            return res.status(200).json({ creditLimit: creditLimit });
+        } else {
+            return res.status(404).json({ message: "Credit limit not found for this customer ID" });
+        }
+
+    } catch (error) {
+        console.error("Error fetching credit limit:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
 
 module.exports = router;
 

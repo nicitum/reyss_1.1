@@ -14,6 +14,8 @@ import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 import { ipAddress } from "../../urls";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { checkTokenAndRedirect } from "../../services/auth";
+import { jwtDecode } from 'jwt-decode';
+// import { Toast } from 'react-native-toast-message/lib/typescript/Toast'; // Removed Toast import as per analysis
 
 // Helper function to format epoch time
 const formatDate = (epochTime) => {
@@ -26,7 +28,45 @@ const HomePage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [userDetails, setUserDetails] = useState(null);
     const [lastOrderDetails, setLastOrderDetails] = useState(null);
+    const [creditLimit, setCreditLimit] = useState(null); // State for credit limit
     const navigation = useNavigation();
+
+    // Function to check credit limit - moved inside HomePage component
+    const checkCreditLimit = useCallback(async () => {
+        try {
+            const userAuthToken = await checkTokenAndRedirect(navigation);
+            if (!userAuthToken) {
+                console.error("Authentication Error: Authorization token missing.");
+                return null; // Indicate error
+            }
+            const decodedToken = jwtDecode(userAuthToken);
+            const customerId = decodedToken.id;
+
+            const creditLimitResponse = await fetch(`http://${ipAddress}:8090/credit-limit?customerId=${customerId}`, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${userAuthToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (creditLimitResponse.ok) {
+                const creditData = await creditLimitResponse.json();
+                return parseFloat(creditData.creditLimit); // Parse to float for comparison
+            } else if (creditLimitResponse.status === 404) {
+                console.log("Credit limit not found for customer, proceeding without limit check.");
+                return Infinity; // Treat as no credit limit or very high limit, allow order (adjust logic if needed)
+            } else {
+                console.error("Error fetching credit limit:", creditLimitResponse.status, creditLimitResponse.statusText);
+                return null; // Indicate error
+            }
+
+        } catch (error) {
+            console.error("Error checking credit limit:", error);
+            return null; // Indicate error
+        }
+    }, [navigation]);
+
 
     // Back button handler
     const handleBackButton = useCallback(() => {
@@ -95,8 +135,11 @@ const HomePage = () => {
             setUserDetails(userDetailsData.userDetails);
             setLastOrderDetails(userDetailsData.latestOrder);
         }
+        // Fetch credit limit here
+        const creditLimitValue = await checkCreditLimit();
+        setCreditLimit(creditLimitValue); // Store in state
         setIsLoading(false);
-    }, [userDetailsData1]);
+    }, [userDetailsData1, checkCreditLimit]);
 
     useFocusEffect(
         useCallback(() => {
@@ -144,6 +187,10 @@ const HomePage = () => {
                 <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>Route:</Text>
                     <Text style={styles.detailValue}>{route || "N/A"}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Credit Limit:</Text>
+                    <Text style={styles.detailValue}>{creditLimit !== null ? (creditLimit === Infinity ? "N/A (No Limit)" : `₹ ${creditLimit}`) : "Fetching..."}</Text>
                 </View>
                 <TouchableOpacity style={styles.callButton}>
                     <MaterialIcons name="call" size={22} color="#333" />

@@ -8,7 +8,7 @@ import {
     ActivityIndicator,
     Platform,
     TouchableOpacity,
-    ToastAndroid,
+    ToastAndroid, // Keep ToastAndroid for Android
     PermissionsAndroid,
     Linking
 } from "react-native";
@@ -23,7 +23,7 @@ import * as XLSX from 'xlsx';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
-const LOADING_SLIP_DIR_URI_KEY = 'loadingSlipDirectoryUri'; // Key for AsyncStorage
+const LOADING_SLIP_DIR_URI_KEY = 'loadingSlipDirectoryUri';
 
 const LoadingSlipPage = () => {
     const [assignedUsers, setAssignedUsers] = useState([]);
@@ -37,10 +37,10 @@ const LoadingSlipPage = () => {
     const [products, setProducts] = useState([]);
     const [selectedOrderId, setSelectedOrderId] = useState(null);
     const [isOrderUpdated, setIsOrderUpdated] = useState(false);
-    const [savedDirectoryUri, setSavedDirectoryUri] = useState(null); // State to store directory URI
+    const [savedDirectoryUri, setSavedDirectoryUri] = useState(null);
 
-    useEffect(() => { // Load savedDirectoryUri from AsyncStorage on component mount
-        const loadSavedDirectoryUri = async () => {
+    useEffect(() => {
+        const loadSavedState = async () => {
             try {
                 const storedUri = await AsyncStorage.getItem(LOADING_SLIP_DIR_URI_KEY);
                 if (storedUri) {
@@ -48,10 +48,10 @@ const LoadingSlipPage = () => {
                     console.log("Loaded savedDirectoryUri from AsyncStorage:", storedUri);
                 }
             } catch (e) {
-                console.error("Error loading savedDirectoryUri from AsyncStorage:", e);
+                console.error("Error loading state from AsyncStorage:", e);
             }
         };
-        loadSavedDirectoryUri();
+        loadSavedState();
     }, []);
 
 
@@ -127,14 +127,7 @@ const LoadingSlipPage = () => {
                 "Authorization": `Bearer ${token}`,
                 "Content-Type": "application/json",
             };
-
-            console.log("FETCH ORDER PRODUCTS - Request URL:", url);
-            console.log("FETCH ORDER PRODUCTS - Request Headers:", headers);
-
             const productsResponse = await fetch(url, { headers });
-
-            console.log("FETCH ORDER PRODUCTS - Response Status:", productsResponse.status);
-            console.log("FETCH ORDER PRODUCTS - Response Status Text:", productsResponse.statusText);
 
             if (!productsResponse.ok) {
                 const errorText = await productsResponse.text();
@@ -151,26 +144,13 @@ const LoadingSlipPage = () => {
             }
 
             const productsData = await productsResponse.json();
-            console.log("FETCH ORDER PRODUCTS - Response Data:", productsData);
             setProducts(productsData);
             setSelectedOrderId(orderIdToFetch);
-
-            generateExcelReport(productsData, routeName);
-            if (Platform.OS === 'android') {
-                ToastAndroid.show('Loading Slip Generated Successfully!', ToastAndroid.SHORT);
-            } else {
-                Alert.alert('Success', 'Loading Slip Generated Successfully!');
-            }
 
 
         } catch (error) {
             console.error("FETCH ORDER PRODUCTS - Fetch Error:", error);
             setError(error.message || "Failed to fetch order products.");
-            if (Platform.OS === 'android') {
-                ToastAndroid.show('Failed to generate Loading Slip.', ToastAndroid.SHORT);
-            } else {
-                Alert.alert('Error', 'Failed to generate Loading Slip.');
-            }
             setProducts([]);
             setSelectedOrderId(null);
         } finally {
@@ -178,27 +158,22 @@ const LoadingSlipPage = () => {
         }
     };
 
-    const save = async (uri, filename, mimetype) => {
+    const save = async (uri, filename, mimetype, reportType) => {
         if (Platform.OS === "android") {
             try {
-                // First check if we already have a saved directory URI
                 let directoryUriToUse = await AsyncStorage.getItem(LOADING_SLIP_DIR_URI_KEY);
-    
-                // Only request permissions if we don't have a saved URI
+
                 if (!directoryUriToUse) {
                     const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
                     if (permissions.granted) {
                         directoryUriToUse = permissions.directoryUri;
-                        // Save the URI for future use
                         await AsyncStorage.setItem(LOADING_SLIP_DIR_URI_KEY, directoryUriToUse);
                     } else {
-                        // If user denies permission, fall back to sharing
-                        shareAsync(uri);
+                        shareAsync(uri, reportType);
                         return;
                     }
                 }
-    
-                // Use the directory URI to save the file
+
                 const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
                 const newUri = await FileSystem.StorageAccessFramework.createFileAsync(
                     directoryUriToUse,
@@ -206,24 +181,30 @@ const LoadingSlipPage = () => {
                     mimetype
                 );
                 await FileSystem.writeAsStringAsync(newUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-                
-                ToastAndroid.show('Loading Slip Saved Successfully!', ToastAndroid.SHORT);
+
+                if (Platform.OS === 'android') {
+                    ToastAndroid.show(`${reportType} Saved Successfully!`, ToastAndroid.SHORT);
+                } else {
+                    Alert.alert('Success', `${reportType} Saved Successfully!`);
+                }
             } catch (error) {
                 console.error("Error saving file:", error);
-                // Clear saved URI only if we get a permission error
                 if (error.message.includes('permission')) {
                     await AsyncStorage.removeItem(LOADING_SLIP_DIR_URI_KEY);
                 }
-                ToastAndroid.show('Failed to save Loading Slip. Please try again.', ToastAndroid.SHORT);
+                if (Platform.OS === 'android') {
+                    ToastAndroid.show(`Failed to save ${reportType}. Please try again.`, ToastAndroid.SHORT);
+                } else {
+                    Alert.alert('Error', `Failed to save ${reportType}. Please try again.`);
+                }
             }
         } else {
-            shareAsync(uri);
+            shareAsync(uri, reportType);
         }
     };
-    
 
 
-    const generateExcelReport = async (productsData, routeName) => {
+    const generateExcelReport = async (productsData, reportType, routeName = 'Consolidated Routes') => {
         if (!productsData || productsData.length === 0) {
             Alert.alert("No Products", "No products to include in the loading slip.");
             return;
@@ -233,7 +214,7 @@ const LoadingSlipPage = () => {
         try {
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet([
-                ["Loading Slip"],
+                [`${reportType}`],
                 [`Route: ${routeName}`],
                 [],
                 ["Products", "Category", "Quantity", "Crates"],
@@ -244,12 +225,12 @@ const LoadingSlipPage = () => {
                     "",
                 ]),
             ]);
-            XLSX.utils.book_append_sheet(wb, ws, "Loading Slip Data");
+            XLSX.utils.book_append_sheet(wb, ws, `${reportType} Data`);
 
             const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
             const base64Workbook = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
 
-            const filename = 'LoadingSlip.xlsx';
+            const filename = `${reportType.replace(/\s/g, '')}.xlsx`;
             const mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 
@@ -263,6 +244,9 @@ const LoadingSlipPage = () => {
                 link.click();
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
+                if (Platform.OS === 'web') {
+                    Alert.alert('Success', `${reportType} Generated Successfully! File downloaded in your browser.`);
+                }
             } else {
                 const fileDir = FileSystem.documentDirectory;
                 const fileUri = fileDir + filename;
@@ -271,20 +255,26 @@ const LoadingSlipPage = () => {
                     encoding: FileSystem.EncodingType.Base64
                 });
 
-                console.log("File written to documentDirectory:", fileUri);
 
                 if (Platform.OS === 'android') {
-                    save(fileUri, filename, mimetype);
+                    save(fileUri, filename, mimetype, reportType);
                 } else {
                     try {
                         await Sharing.shareAsync(fileUri, {
                             mimeType: mimetype,
-                            dialogTitle: 'Loading Slip Report',
+                            dialogTitle: `${reportType} Report`,
                             UTI: 'com.microsoft.excel.xlsx'
                         });
+                         if (Platform.OS !== 'android') {
+                            Alert.alert('Success', `${reportType} Generated and Shared Successfully!`);
+                        }
                     } catch (shareError) {
                         console.error("Sharing Error:", shareError);
-                        Alert.alert("Sharing Failed", "Error occurred while trying to share the loading slip.");
+                        if (Platform.OS === 'android') {
+                            ToastAndroid.show(`Sharing ${reportType} Failed.`, ToastAndroid.SHORT);
+                        } else {
+                            Alert.alert("Sharing Failed", `Error occurred while trying to share the ${reportType.toLowerCase()}.`);
+                        }
                         setError("Error sharing file.");
                     }
                 }
@@ -293,41 +283,183 @@ const LoadingSlipPage = () => {
 
         } catch (e) {
             console.error("Excel Generation Error:", e);
-            Alert.alert("Generation Failed", "Error generating Excel loading slip.");
+            if (Platform.OS === 'android') {
+                ToastAndroid.show(`Failed to generate ${reportType}.`, ToastAndroid.SHORT);
+            } else {
+                Alert.alert("Generation Failed", `Error generating Excel ${reportType.toLowerCase()}.`);
+            }
             setError("Error generating Excel file.");
         } finally {
             setLoading(false);
         }
     };
 
+    const generateDeliveryExcelReport = async () => {
+        const reportType = 'Delivery Slip';
+        setLoading(true);
+        try {
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(await createDeliverySlipDataForExcel());
+            XLSX.utils.book_append_sheet(wb, ws, `${reportType}`);
 
-    const requestStoragePermission = async () => {
-        if (Platform.OS === 'android') {
-            try {
-                const granted = await PermissionsAndroid.request(
-                    PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-                    {
-                        title: "Storage Permission",
-                        message: "App needs storage permission to download files.",
-                        buttonNeutral: "Ask Me Later",
-                        buttonNegative: "Cancel",
-                        buttonPositive: "OK"
-                    }
-                );
-                if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-                    console.log("Storage permission granted");
-                    return true;
-                } else {
-                    console.log("Storage permission denied");
-                    return false;
+            const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+            const base64Workbook = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+
+            const filename = `${reportType.replace(/\s/g, '')}.xlsx`;
+            const mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+            if (Platform.OS === 'web') {
+                const blob = new Blob([wbout], { type: mimetype });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                if (Platform.OS === 'web') {
+                    Alert.alert('Success', `${reportType} Generated Successfully! File downloaded in your browser.`);
                 }
-            } catch (err) {
-                console.warn("Storage permission error", err);
-                return false;
+            } else {
+                const fileDir = FileSystem.documentDirectory;
+                const fileUri = fileDir + filename;
+
+                await FileSystem.writeAsStringAsync(fileUri, base64Workbook, {
+                    encoding: FileSystem.EncodingType.Base64
+                });
+
+                console.log(`${reportType} File written to documentDirectory:`, fileUri);
+
+                if (Platform.OS === 'android') {
+                    save(fileUri, filename, mimetype, reportType);
+                } else {
+                    try {
+                        await Sharing.shareAsync(fileUri, {
+                            mimeType: mimetype,
+                            dialogTitle: `${reportType} Report`,
+                            UTI: 'com.microsoft.excel.xlsx'
+                        });
+                        if (Platform.OS !== 'android') {
+                            Alert.alert('Success', `${reportType} Generated and Shared Successfully!`);
+                        }
+                    } catch (shareError) {
+                        console.error(`${reportType} Sharing Error:`, shareError);
+                        if (Platform.OS === 'android') {
+                            ToastAndroid.show(`Sharing ${reportType} Failed.`, ToastAndroid.SHORT);
+                        } else {
+                            Alert.alert("Sharing Failed", `Error occurred while trying to share the ${reportType.toLowerCase()}.`);
+                        }
+                        setError("Error sharing delivery slip file.");
+                    }
+                }
             }
-        } else {
-            return true;
+
+        } catch (e) {
+            console.error(`${reportType} Excel Generation Error:`, e);
+            if (Platform.OS === 'android') {
+                ToastAndroid.show(`Failed to generate ${reportType}.`, ToastAndroid.SHORT);
+            } else {
+                Alert.alert("Generation Failed", `Error generating Excel ${reportType.toLowerCase()}.`);
+            }
+            setError("Error generating delivery slip Excel file.");
+        } finally {
+            setLoading(false);
         }
+    };
+
+    const createDeliverySlipDataForExcel = async () => {
+        const orderMap = new Map();
+        const allProducts = new Set();
+        const customerNames = [];
+
+        adminUsersWithOrdersToday.forEach(user => {
+            const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
+            if (order) {
+                customerNames.push(user.name);
+                orderMap.set(user.cust_id, { name: user.name, orderId: order.id, products: [] });
+            }
+        });
+
+        for (const customerId of orderMap.keys()) {
+            const orderData = orderMap.get(customerId);
+            try {
+                const token = await AsyncStorage.getItem("userAuthToken");
+                const url = `http://${ipAddress}:8090/order-products?orderId=${orderData.orderId}`;
+                const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+                const productsResponse = await fetch(url, { headers });
+                if (!productsResponse.ok) {
+                    console.error(`Failed to fetch products for order ID ${orderData.orderId}. Status: ${productsResponse.status}`);
+                    continue;
+                }
+                const productsData = await productsResponse.json();
+                orderData.products = productsData;
+                productsData.forEach(product => allProducts.add(product.name));
+            } catch (fetchError) {
+                console.error("Error fetching order products:", fetchError);
+            }
+        }
+
+        const productList = Array.from(allProducts);
+        const excelData = [["Delivery Slip"], [], ["Items", ...customerNames]];
+
+        productList.forEach(productName => {
+            const productRow = [productName];
+            customerNames.forEach(customerName => {
+                let quantity = 0;
+                const customerOrder = orderMap.get(adminUsersWithOrdersToday.find(u => u.name === customerName)?.cust_id);
+                if (customerOrder && customerOrder.products) {
+                    const productInOrder = customerOrder.products.find(p => p.name === productName);
+                    quantity = productInOrder ? productInOrder.quantity : 0;
+                }
+                productRow.push(quantity);
+            });
+            excelData.push(productRow);
+        });
+        return excelData;
+    };
+
+    const createLoadingSlipDataForExcel = async () => {
+        const consolidatedProducts = new Map();
+
+        for (const user of adminUsersWithOrdersToday) {
+            const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
+            if (order) {
+                try {
+                    const token = await AsyncStorage.getItem("userAuthToken");
+                    const url = `http://${ipAddress}:8090/order-products?orderId=${order.id}`;
+                    const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+                    const productsResponse = await fetch(url, { headers });
+                    if (!productsResponse.ok) {
+                        console.error(`Failed to fetch products for order ID ${order.id}. Status: ${productsResponse.status}`);
+                        continue;
+                    }
+                    const productsData = await productsResponse.json();
+                    productsData.forEach(product => {
+                        const currentProductInfo = consolidatedProducts.get(product.name);
+                        if (currentProductInfo) {
+                            consolidatedProducts.set(product.name, {
+                                totalQuantity: currentProductInfo.totalQuantity + product.quantity,
+                                category: currentProductInfo.category
+                            });
+                        } else {
+                            consolidatedProducts.set(product.name, {
+                                totalQuantity: product.quantity,
+                                category: product.category || 'Unknown'
+                            });
+                        }
+                    });
+                } catch (fetchError) {
+                    console.error("Error fetching order products:", fetchError);
+                }
+            }
+        }
+
+        const productListForExcel = [];
+        for (const [productName, productInfo] of consolidatedProducts.entries()) {
+            productListForExcel.push({ name: productName, quantity: productInfo.totalQuantity, category: productInfo.category });
+        }
+        return productListForExcel;
     };
 
 
@@ -376,28 +508,46 @@ const LoadingSlipPage = () => {
     useEffect(() => {
         navigation.setOptions({
             headerRight: () => (
-                <TouchableOpacity
-                    style={{ marginRight: 15, backgroundColor: '#FDDA0D', padding: 10, borderRadius: 8 }}
-                    onPress={() => {
-                        if (adminUsersWithOrdersToday.length > 0 ) {
-                            const firstUserWithOrder = adminUsersWithOrdersToday[0];
-                            const orderForUser = adminOrders.find(order => order.customer_id === firstUserWithOrder.cust_id);
-
-                            if (orderForUser) {
-                                fetchOrderProducts(orderForUser.id, firstUserWithOrder.route);
+                <View style={{ flexDirection: 'row' }}>
+                    <TouchableOpacity
+                        style={{
+                            marginRight: 10,
+                            padding: 10,
+                            borderRadius: 8,
+                            backgroundColor: '#FFD700' // Yellow for Loading Slip
+                        }}
+                        onPress={async () => {
+                            if (adminUsersWithOrdersToday.length > 0 ) {
+                                const loadingSlipData = await createLoadingSlipDataForExcel();
+                                generateExcelReport(loadingSlipData, 'Loading Slip');
                             } else {
-                                Alert.alert("Error", "Could not find order details for the first user.");
+                                Alert.alert("No Orders", "No orders available to generate loading slip for the current filter.");
                             }
-                        } else {
-                            Alert.alert("No Orders", "No orders available to generate loading slip for the current filter.");
-                        }
-                    }}
-                >
-                    <Text style={{ fontWeight: 'bold', color: '#333' }}>Generate Loading Slip</Text>
-                </TouchableOpacity>
+                        }}
+                    >
+                        <Text style={{ fontWeight: 'bold', color: '#fff' }}>Generate Loading Slip</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={{
+                            marginRight: 15,
+                            padding: 10,
+                            borderRadius: 8,
+                            backgroundColor: '#2196F3' // Blue for Delivery Slip
+                        }}
+                        onPress={async () => {
+                            if (adminUsersWithOrdersToday.length > 0 ) {
+                                generateDeliveryExcelReport();
+                            } else {
+                                Alert.alert("No Orders", "No orders available to generate delivery slip for the current filter.");
+                            }
+                        }}
+                    >
+                        <Text style={{ fontWeight: 'bold', color: '#fff' }}>Generate Delivery Slip</Text>
+                    </TouchableOpacity>
+                </View>
             ),
         });
-    }, [navigation, adminOrders, adminUsersWithOrdersToday]);
+    }, [navigation, adminOrders, adminUsersWithOrdersToday, orderTypeFilter]);
 
 
     const renderItem = ({ item }) => {
@@ -416,9 +566,7 @@ const LoadingSlipPage = () => {
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.headerText}>Loading Slip</Text>
-            </View>
+            
 
             <View style={styles.filterContainer}>
                 <Text style={styles.filterLabel}>Filter Order Type:</Text>
@@ -455,7 +603,7 @@ const LoadingSlipPage = () => {
             )}
              {loading && <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="large" color="#FDDA0D" />
-                <Text style={styles.loadingText}>Generating Loading Slip...</Text>
+                <Text style={styles.loadingText}>Generating Slip...</Text>
             </View>}
         </View>
     );
@@ -463,11 +611,10 @@ const LoadingSlipPage = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#f5f5f5" },
-    header: { backgroundColor: "#FDDA0D", padding: 15, borderBottomLeftRadius: 15, borderBottomRightRadius: 15 },
     headerText: { fontSize: 22, fontWeight: "bold", textAlign: "center", color: "#333" },
-    filterContainer: { flexDirection: "row", alignItems: "center", padding: 10 },
-    filterLabel: { fontSize: 15, fontWeight: "bold", marginRight: 10 },
-    pickerWrapper: { flex: 0.4, borderWidth: 1, borderColor: "#777", borderRadius: 5 },
+    filterContainer: { flexDirection: "row", alignItems: "center", padding: 20 },
+    filterLabel: { fontSize: 15, fontWeight: "bold", marginRight: 20 },
+    pickerWrapper: { flex: 0.4, borderWidth: 1, borderColor: "#777", borderRadius: 10 },
     columnHeader: { flexDirection: "row", padding: 10, backgroundColor: "#ddd" },
     columnHeaderText: { fontSize: 16, fontWeight: "bold", textAlign: "center" },
     dataRow: { flexDirection: "row", padding: 10, borderBottomWidth: 1, borderBottomColor: "#ddd" },

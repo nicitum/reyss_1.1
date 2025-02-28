@@ -155,6 +155,13 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                                 >
                                     <Text style={styles.subMenuText}>Delivery Status Update</Text>
                                 </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.subMenuItem}
+                                    onPress={() => { toggleOrdersSubMenu(); navigation.navigate("Payments"); }}
+                                >
+                                    <Text style={styles.subMenuText}>Payments</Text>
+                                </TouchableOpacity>
                             </>
                         )}
                     </View>

@@ -6,6 +6,7 @@ import Toast from 'react-native-toast-message';
 import { jwtDecode } from 'jwt-decode';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import SearchProductModal from '../IndentPage/nestedPage/searchProductModal';
+import { checkTokenAndRedirect } from "../../services/auth";
 import moment from 'moment';
 
 
@@ -225,6 +226,57 @@ const UpdateOrdersU = () => {
         }
     };
 
+
+
+    const checkCreditLimit = async () => {
+        try {
+            const userAuthToken = await checkTokenAndRedirect(navigation);
+            if (!userAuthToken) {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Authentication Error',
+                    text2: "Authorization token missing."
+                });
+                return null; // Indicate error
+            }
+            const decodedToken = jwtDecode(userAuthToken);
+            const customerId = decodedToken.id;
+
+            const creditLimitResponse = await fetch(`http://${ipAddress}:8090/credit-limit?customerId=${customerId}`, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${userAuthToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (creditLimitResponse.ok) {
+                const creditData = await creditLimitResponse.json();
+                return parseFloat(creditData.creditLimit); // Parse to float for comparison
+            } else if (creditLimitResponse.status === 404) {
+                console.log("Credit limit not found for customer, proceeding without limit check.");
+                return Infinity; // Treat as no credit limit or very high limit, allow order (adjust logic if needed)
+            } else {
+                console.error("Error fetching credit limit:", creditLimitResponse.status, creditLimitResponse.statusText);
+                Toast.show({
+                    type: 'error',
+                    text1: 'Credit Limit Error',
+                    text2: "Failed to fetch credit limit."
+                });
+                return null; // Indicate error
+            }
+
+        } catch (error) {
+            console.error("Error checking credit limit:", error);
+            Toast.show({
+                type: 'error',
+                text1: 'Credit Limit Error',
+                text2: "Error checking credit limit."
+            });
+            return null; // Indicate error
+        }
+    };
+
     const handleUpdateOrder = async () => {
         if (!selectedOrderId) {
             Alert.alert("Error", "Please select an order to update.");
@@ -235,6 +287,7 @@ const UpdateOrdersU = () => {
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
 
+            // Calculate new total amount
             let calculatedTotalAmount = 0;
             const productsToUpdate = products.map(product => ({
                 order_id: selectedOrderId,
@@ -249,6 +302,24 @@ const UpdateOrdersU = () => {
                 calculatedTotalAmount += product.quantity * product.price;
             });
 
+            // Check credit limit before proceeding
+            const creditLimit = await checkCreditLimit();
+            console.log("DEBUG: Credit Limit:", creditLimit);
+           
+            
+            if (creditLimit=== null) {
+                throw new Error("Unable to verify credit limit");
+            }
+
+            if (calculatedTotalAmount > creditLimit) {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Credit Limit Exceeded',
+                    text2: `Order amount (₹${calculatedTotalAmount}) exceeds your credit limit (₹${creditLimit})`
+                });
+                return;
+            }
+
             const url = `http://${ipAddress}:8090/order_update`;
             const headers = {
                 "Authorization": `Bearer ${token}`,
@@ -256,7 +327,7 @@ const UpdateOrdersU = () => {
             };
             const requestBody = {
                 orderId: selectedOrderId,
-                products: productsToUpdate, // Use the updated productsToUpdate array
+                products: productsToUpdate,
                 totalAmount: calculatedTotalAmount,
                 total_amount: calculatedTotalAmount
             };
@@ -271,19 +342,12 @@ const UpdateOrdersU = () => {
                 body: JSON.stringify(requestBody)
             });
 
-            console.log("UPDATE ORDER - Response Status:", updateResponse.status);
-            console.log("UPDATE ORDER - Response Status Text:", updateResponse.statusText);
-
-
             if (!updateResponse.ok) {
                 const errorText = await updateResponse.text();
-                const message = `Failed to update order products and total amount. Status: ${updateResponse.status}, Text: ${errorText}`;
-                console.error("UPDATE ORDER - Error Response Text:", errorText);
-                throw new Error(message);
+                throw new Error(`Failed to update order. Status: ${updateResponse.status}, Text: ${errorText}`);
             }
 
             const updateData = await updateResponse.json();
-            console.log("UPDATE ORDER - Response Data:", updateData);
             Toast.show({
                 type: 'success',
                 text1: 'Order Updated',

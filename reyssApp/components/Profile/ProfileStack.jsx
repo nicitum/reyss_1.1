@@ -8,6 +8,7 @@ import UpdateOrdersU from './UpdateOrdersU';
 import AdminOrderHistory from './AdminOrderHistory';
 import PlaceOrderAdmin from './PlaceOrderAdmin';
 import LoadingSlip from './LoadingSlip';
+import PaymentScreen from './Payments';
 
 const Stack = createStackNavigator();
 
@@ -57,7 +58,15 @@ const ProfileStack = () => {
       <Stack.Screen 
         name="LoadingSlip" 
         component={LoadingSlip} 
-        options={{ title: 'LoadingSlip' }} 
+        options={{ title: '' }} 
+        
+      />
+
+      <Stack.Screen 
+        name="Payments" 
+        component={PaymentScreen} 
+        options={{ title: 'Payment Screen' }} 
+        
       />
 
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { View, Alert, StyleSheet, TouchableOpacity, TextInput, Text, ScrollView, Button, Modal, SafeAreaView } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import moment from "moment";
@@ -10,7 +10,7 @@ import ErrorMessage from "../general/errorMessage";
 import BackButton from "../general/backButton";
 import SubmitButton from "./nestedPage/submitButton";
 import SearchProductModal from "./nestedPage/searchProductModal";
-import OrderDetails from "./nestedPage/orderDetails";
+// import OrderDetails from "./nestedPage/orderDetails"; // Assuming OrderDetails is not a separate component now, will integrate directly
 import OrderProductsList from "./nestedPage/orderProductsList";
 import { ipAddress } from "../../urls";
 import { checkTokenAndRedirect } from "../../services/auth";
@@ -26,6 +26,7 @@ const PlaceOrderPage = ({ route }) => {
     const navigation = useNavigation();
     const [updatedQuantities, setUpdatedQuantities] = useState({});
     const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+    const [totalOrderAmount, setTotalOrderAmount] = useState(0); // State for total amount
 
     const isPastDate = moment(selectedDate).isBefore(moment(), "day");
     const isCurrentDate = moment(selectedDate).isSame(moment(), "day");
@@ -33,23 +34,37 @@ const PlaceOrderPage = ({ route }) => {
     const isOrderingDisabled = false;
 
 
-    useEffect(() => {
-        const initializeOrder = async () => {
-            if (order && order.orderId) {
-                await fetchOrderDetails(order.orderId);
-            } else if (selectedDate && shift) {
-                await fetchOrderDetails(null, selectedDate, shift);
-            } else {
-                if (isPastDate) {
-                    showAlertAndGoBack();
-                }
-            }
-        };
-        initializeOrder();
-    }, [order, selectedDate, shift]); // **Added 'selectedDate' to dependency array**
+    // Function to calculate total amount (define it FIRST)
+    const calculateTotalAmount = useCallback((products) => {
+        if (!products || products.length === 0) {
+            return 0;
+        }
+        return products.reduce((sum, product) => {
+            return sum + (product.price * product.quantity);
+        }, 0);
+    }, []);
+
+    // Define showAlertAndGoBack BEFORE useEffect (Correct function order)
+    const showAlertAndGoBack = useCallback(() => {
+        let message = "There are no orders for this date.";
+        if (hasExistingOrder) {
+            message = "An order already exists for this date.";
+        } else if (isPastDate) {
+            message = "Cannot place orders for past dates.";
+        }
+
+        Alert.alert("Order Not Allowed", message, [{ text: "OK" }], {
+            cancelable: false,
+        });
+
+        setTimeout(() => {
+            navigation.goBack();
+        }, 3000);
+    }, [navigation, hasExistingOrder, isPastDate]);
 
 
-    const fetchOrderDetails = async (orderId = null, date = null, shiftType = null) => {
+    // Define fetchOrderDetails BEFORE useEffect (Correct function order)
+    const fetchOrderDetails = useCallback(async (orderId = null, date = null, shiftType = null) => {
         setLoading(true);
         setError(null);
 
@@ -74,15 +89,12 @@ const PlaceOrderPage = ({ route }) => {
             if (orderId) {
                 // ... (orderId fetching - no changes here - this is for viewing existing orders by ID) ...
             } else if (date && shiftType) {
-                console.log("Selected Date Parameter:", selectedDate); // Log selectedDate
-                console.log("Date Parameter:", date);         // Log date parameter (should be same as selectedDate)
+                console.log("Selected Date Parameter:", selectedDate);
+                console.log("Date Parameter:", date);
 
-                //const formattedPreviousDate = moment(selectedDate).subtract(1, 'day').format("YYYY-DD-MM");
-                //console.log("Formatted Previous Date:", formattedPreviousDate); // Log formattedPreviousDate
+                const apiUrl = `http://${ipAddress}:8090/most-recent-order?customerId=${customerId}&orderType=${shiftType}`;
 
-               const apiUrl = `http://${ipAddress}:8090/most-recent-order?customerId=${customerId}&orderType=${shiftType}`;
-
-                console.log("API URL:", apiUrl); // Log the complete API URL
+                console.log("API URL:", apiUrl);
 
                 const orderResponse = await fetch(apiUrl, {
                     method: "GET",
@@ -109,11 +121,8 @@ const PlaceOrderPage = ({ route }) => {
                         });
 
                         if (!productsResponse.ok) {
-
-                             // **MODIFIED ERROR HANDLING FOR productsResponse.ok = false**
                             console.log("Failed to fetch product details for previous order, initializing with empty product list.");
-                            fetchedOrderDetails = { order: orderData, products: [] }; // Initialize with empty product list but keep order details if available
-                            
+                            fetchedOrderDetails = { order: orderData, products: [] };
                         }
                         const productsData = await productsResponse.json();
                         console.log("Previous day order product details:", productsData);
@@ -123,20 +132,17 @@ const PlaceOrderPage = ({ route }) => {
                                 console.warn("Missing product name:", product);
                                 return false;
                             }
-                            
+
                             const productNameLower = product.name.trim().toLowerCase();
 
-                            // If it contains "butter milk", always include it
                             if (productNameLower.includes("butter milk")) {
                                 return true;
                             }
 
-                            // Exclude if it contains "ghee" or "butter"
                             if (productNameLower.includes("ghee") || productNameLower.includes("butter")) {
                                 return false;
                             }
 
-                            // Include everything else
                             return true;
                         });
 
@@ -147,7 +153,6 @@ const PlaceOrderPage = ({ route }) => {
                             products: filteredProducts,
                         };
 
-                        
 
                     } catch (productFetchError) {
                         console.error("Error fetching product details:", productFetchError);
@@ -174,25 +179,24 @@ const PlaceOrderPage = ({ route }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [navigation, selectedDate]); // Added selectedDate to useCallback dependencies. You might need to add other external dependencies if any.
 
 
-    const showAlertAndGoBack = () => {
-        let message = "There are no orders for this date.";
-        if (hasExistingOrder) {
-            message = "An order already exists for this date.";
-        } else if (isPastDate) {
-            message = "Cannot place orders for past dates.";
-        }
+    useEffect(() => {
+        const initializeOrder = async () => {
+            if (order && order.orderId) {
+                await fetchOrderDetails(order.orderId);
+            } else if (selectedDate && shift) {
+                await fetchOrderDetails(null, selectedDate, shift);
+            } else {
+                if (isPastDate) {
+                    showAlertAndGoBack();
+                }
+            }
+        };
+        initializeOrder();
+    }, [order, selectedDate, shift, fetchOrderDetails, isPastDate, showAlertAndGoBack]);
 
-        Alert.alert("Order Not Allowed", message, [{ text: "OK" }], {
-            cancelable: false,
-        });
-
-        setTimeout(() => {
-            navigation.goBack();
-        }, 3000);
-    };
 
     const handleAddProduct = async (product) => {
         try {
@@ -219,7 +223,8 @@ const PlaceOrderPage = ({ route }) => {
             const updatedProducts = [...currentProducts, newProduct];
             setOrderDetails({ ...orderDetails, products: updatedProducts });
             setShowSearchModal(false);
-           
+            setTotalOrderAmount(calculateTotalAmount(updatedProducts)); // Calculate and set total amount
+
         } catch (error) {
             console.error("Error adding product:", error);
             Toast.show({
@@ -252,6 +257,7 @@ const PlaceOrderPage = ({ route }) => {
             };
 
             setOrderDetails({ ...orderDetails, products: updatedProducts });
+            setTotalOrderAmount(calculateTotalAmount(updatedProducts)); // Recalculate total amount after quantity change
         } catch (error) {
             console.error("Error updating quantity:", error);
             Toast.show({
@@ -283,8 +289,93 @@ const PlaceOrderPage = ({ route }) => {
         setConfirmModalVisible(true);
     };
 
+
+    const checkCreditLimit = async () => {
+        try {
+            const userAuthToken = await checkTokenAndRedirect(navigation);
+            if (!userAuthToken) {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Authentication Error',
+                    text2: "Authorization token missing."
+                });
+                return null; // Indicate error
+            }
+            const decodedToken = jwtDecode(userAuthToken);
+            const customerId = decodedToken.id;
+
+            const creditLimitResponse = await fetch(`http://${ipAddress}:8090/credit-limit?customerId=${customerId}`, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${userAuthToken}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (creditLimitResponse.ok) {
+                const creditData = await creditLimitResponse.json();
+                return parseFloat(creditData.creditLimit); // Parse to float for comparison
+            } else if (creditLimitResponse.status === 404) {
+                console.log("Credit limit not found for customer, proceeding without limit check.");
+                return Infinity; // Treat as no credit limit or very high limit, allow order (adjust logic if needed)
+            } else {
+                console.error("Error fetching credit limit:", creditLimitResponse.status, creditLimitResponse.statusText);
+                Toast.show({
+                    type: 'error',
+                    text1: 'Credit Limit Error',
+                    text2: "Failed to fetch credit limit."
+                });
+                return null; // Indicate error
+            }
+
+        } catch (error) {
+            console.error("Error checking credit limit:", error);
+            Toast.show({
+                type: 'error',
+                text1: 'Credit Limit Error',
+                text2: "Error checking credit limit."
+            });
+            return null; // Indicate error
+        }
+    };
+
+
+    const ConfirmModal = ({ isVisible, onConfirm, onCancel }) => {
+       
+
+        return (
+            <Modal visible={isVisible} transparent animationType="slide">
+                <View style={styles.modalContainer}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalText}>Do you want to place this order?</Text>
+                        <View style={styles.buttonContainer}>
+                            <Button title="Cancel" onPress={onCancel} color="#777" />
+                            <Button title="Place Order" onPress={onConfirm} color="#27ae60" />
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        );
+    };
+
     const confirmSubmitEdit = async () => {
         setConfirmModalVisible(false);
+
+        const creditLimit = await checkCreditLimit();
+        if (creditLimit === null) {
+            return; // Do not proceed if credit limit check failed (error toast already shown in checkCreditLimit)
+        }
+
+        if (creditLimit !== Infinity && totalOrderAmount > creditLimit) {
+            const exceededAmount = (totalOrderAmount - creditLimit).toFixed(2);
+            Toast.show({
+                type: 'error',
+                text1: 'Credit Limit Reached',
+                text2: `Credit limit reached by ₹${exceededAmount}. Please adjust your cart.`
+            });
+            return; // Prevent order submission due to credit limit
+        }
+
 
         try {
             const userAuthToken = await checkTokenAndRedirect(navigation);
@@ -325,13 +416,13 @@ const PlaceOrderPage = ({ route }) => {
                     text2: "Order Placed successfully!"
 
                 });
-                //navigation.navigate("IndentPage");
-                navigation.navigate("IndentPage", { orderPlacedSuccessfully: true }); // ADDED parameter
+                navigation.navigate("IndentPage", { orderPlacedSuccessfully: true });
             } else {
                 throw new Error("Unexpected response status.");
             }
         } catch (error) {
-            console.error("Submit error:", error);
+            // ... (rest of your error handling for order placement remains the same) ...
+             console.error("Submit error:", error);
             if (error.response) {
                 console.log(error.response.data.message);
                 Toast.show({
@@ -364,21 +455,16 @@ const PlaceOrderPage = ({ route }) => {
         setConfirmModalVisible(false);
     };
 
-    const ConfirmModal = ({ isVisible, onConfirm, onCancel }) => {
-        return (
-            <Modal visible={isVisible} transparent animationType="slide">
-                <View style={styles.modalContainer}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalText}>Do you want to place this order?</Text>
-                        <View style={styles.buttonContainer}>
-                            <Button title="Cancel" onPress={onCancel} color="#777" />
-                            <Button title="Place Order" onPress={onConfirm} color="#27ae60" />
-                        </View>
-                    </View>
-                </View>
-            </Modal>
-        );
-    };
+
+
+    useEffect(() => {
+        if (orderDetails && orderDetails.products) {
+            setTotalOrderAmount(calculateTotalAmount(orderDetails.products));
+        } else {
+            setTotalOrderAmount(0); // Reset total amount if orderDetails or products are not available
+        }
+    }, [orderDetails, calculateTotalAmount]);
+
 
     if (loading) {
         return <LoadingIndicator />;
@@ -408,15 +494,17 @@ const PlaceOrderPage = ({ route }) => {
 
                 {orderDetails && (
                     <ScrollView contentContainerStyle={styles.contentContainer}>
-                        <OrderDetails
-                            orderDetails={orderDetails}
-                            selectedDate={selectedDate}
-                            shift={shift}
-                        />
+                        {/* Integrated OrderDetails display here */}
+                        <View style={styles.orderDetailsContainer}>
+                            <Text style={styles.orderDetailsText}>Date: {moment(selectedDate).format("YYYY-MM-DD")}</Text>
+                            <Text style={styles.orderDetailsText}>Shift: {shift}</Text>
+                            <Text style={styles.orderDetailsText}>Total Amount: ₹{totalOrderAmount.toFixed(2)}</Text> {/* Display total amount */}
+                        </View>
+
                         <OrderProductsList
                             products={orderDetails.products}
                             onQuantityChange={handleQuantityChange}
-                            setOrderDetails={setOrderDetails} // Pass setOrderDetails here
+                            setOrderDetails={setOrderDetails}
                         />
 
                         <SubmitButton handleSubmit={handleSubmitEdit} buttonStyle={styles.submitButtonStyle} textStyle={styles.submitButtonTextStyle} />
@@ -435,8 +523,8 @@ const PlaceOrderPage = ({ route }) => {
                 )}
             </View>
 
-            
-            <Toast ref={(ref) => Toast.setRef(ref)} />
+
+            <Toast config={toastConfig} ref={(ref) => Toast.setRef(ref)} />
         </SafeAreaView>
     );
 };
@@ -513,6 +601,16 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-around',
         width: '100%',
+    },
+    orderDetailsContainer: { // Style for order details section
+        paddingVertical: 10,
+        marginBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#ddd',
+    },
+    orderDetailsText: { // Style for text within order details
+        fontSize: 16,
+        marginBottom: 5,
     },
 });
 

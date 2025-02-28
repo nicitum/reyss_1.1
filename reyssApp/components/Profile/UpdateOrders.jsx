@@ -226,6 +226,57 @@ const UpdateOrderScreen = () => {
         }
     };
 
+
+     const checkCreditLimit = async () => {
+            try {
+                const userAuthToken = await checkTokenAndRedirect(navigation);
+                if (!userAuthToken) {
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Authentication Error',
+                        text2: "Authorization token missing."
+                    });
+                    return null; // Indicate error
+                }
+                const decodedToken = jwtDecode(userAuthToken);
+                const customerId = decodedToken.id;
+    
+                const creditLimitResponse = await fetch(`http://${ipAddress}:8090/credit-limit?customerId=${customerId}`, {
+                    method: 'GET',
+                    headers: {
+                        Authorization: `Bearer ${userAuthToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                });
+    
+                if (creditLimitResponse.ok) {
+                    const creditData = await creditLimitResponse.json();
+                    return parseFloat(creditData.creditLimit); // Parse to float for comparison
+                } else if (creditLimitResponse.status === 404) {
+                    console.log("Credit limit not found for customer, proceeding without limit check.");
+                    return Infinity; // Treat as no credit limit or very high limit, allow order (adjust logic if needed)
+                } else {
+                    console.error("Error fetching credit limit:", creditLimitResponse.status, creditLimitResponse.statusText);
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Credit Limit Error',
+                        text2: "Failed to fetch credit limit."
+                    });
+                    return null; // Indicate error
+                }
+    
+            } catch (error) {
+                console.error("Error checking credit limit:", error);
+                Toast.show({
+                    type: 'error',
+                    text1: 'Credit Limit Error',
+                    text2: "Error checking credit limit."
+                });
+                return null; // Indicate error
+            }
+        };
+    
+
     const handleUpdateOrder = async () => {
         if (!selectedOrderId) {
             Alert.alert("Error", "Please select an order to update.");
@@ -250,6 +301,10 @@ const UpdateOrderScreen = () => {
                 calculatedTotalAmount += product.quantity * product.price;
             });
 
+
+            
+            
+
             const url = `http://${ipAddress}:8090/order_update`;
             const headers = {
                 "Authorization": `Bearer ${token}`,
@@ -261,7 +316,7 @@ const UpdateOrderScreen = () => {
                 totalAmount: calculatedTotalAmount,
                 total_amount: calculatedTotalAmount
             };
-
+        
             console.log("UPDATE ORDER - Request URL:", url);
             console.log("UPDATE ORDER - Request Headers:", headers);
             console.log("UPDATE ORDER - Request Body:", JSON.stringify(requestBody, null, 2));
@@ -274,7 +329,7 @@ const UpdateOrderScreen = () => {
 
             console.log("UPDATE ORDER - Response Status:", updateResponse.status);
             console.log("UPDATE ORDER - Response Status Text:", updateResponse.statusText);
-
+        
 
             if (!updateResponse.ok) {
                 const errorText = await updateResponse.text();
