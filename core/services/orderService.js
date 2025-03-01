@@ -43,7 +43,7 @@ const placeOrderService = async (
     await addOrderProducts(orderId, products);
 
     // Create a transaction for COD orders
-    await createTransactionForCOD(orderId, customerId, totalAmount);
+    //await createTransactionForCOD(orderId, customerId, totalAmount);
 
     // Return the result (Order placed successfully)
     return {

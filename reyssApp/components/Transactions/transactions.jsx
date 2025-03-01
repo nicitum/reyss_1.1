@@ -54,7 +54,7 @@ const TransactionsPage = () => {
         response.data.data;
       setTransactions(orders);
       setTotalOrderAmount(total_order_amount);
-      setTotalAmountPaid(total_amount_paid);
+    
     } catch (error) {
       console.error("Error fetching transactions:", error);
       Alert.alert("Error", "Failed to fetch transactions. Please try again.");

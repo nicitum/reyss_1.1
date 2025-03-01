@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { View, Text, TextInput, FlatList, Button, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,6 +9,7 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import SearchProductModal from '../IndentPage/nestedPage/searchProductModal';
 import { checkTokenAndRedirect } from "../../services/auth";
 import moment from 'moment';
+
 
 
 import { ipAddress } from '../../urls';
@@ -26,6 +28,8 @@ const UpdateOrdersU = () => {
     const [showSearchModal, setShowSearchModal] = useState(false); // State for modal visibility
     const [orderDeleteLoading, setOrderDeleteLoading] = useState(false);
     const [orderDeleteLoadingId, setOrderDeleteLoadingId] = useState(null);
+
+    const [originalOrderAmounts, setOriginalOrderAmounts] = useState({}); // NEW state variable to store original total amounts
 
 
     useEffect(() => {
@@ -90,6 +94,14 @@ const UpdateOrdersU = () => {
             });
 
             setOrders(todaysOrders);
+
+            // NEW: Store original total amounts in state
+            const amountsMap = {};
+            todaysOrders.forEach(order => {
+                amountsMap[order.id] = order.total_amount; // Assuming your API response has 'total_amount' in each order object
+            });
+            setOriginalOrderAmounts(amountsMap); // Store the map in state
+            console.log("DEBUG: Original Order Amounts Map:", amountsMap);
 
         } catch (fetchOrdersError) {
             console.error("FETCH CUSTOMER ORDERS - Fetch Error:", fetchOrdersError);
@@ -277,6 +289,7 @@ const UpdateOrdersU = () => {
         }
     };
 
+
     const handleUpdateOrder = async () => {
         if (!selectedOrderId) {
             Alert.alert("Error", "Please select an order to update.");
@@ -286,7 +299,16 @@ const UpdateOrdersU = () => {
         setError(null);
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
-
+            if (!token) {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Authentication Error',
+                    text2: "Auth token missing."
+                });
+                setLoading(false);
+                return;
+            }
+    
             // Calculate new total amount
             let calculatedTotalAmount = 0;
             const productsToUpdate = products.map(product => ({
@@ -297,29 +319,37 @@ const UpdateOrdersU = () => {
                 price: product.price,
                 quantity: product.quantity,
             }));
-
+    
             productsToUpdate.forEach(product => {
                 calculatedTotalAmount += product.quantity * product.price;
             });
-
-            // Check credit limit before proceeding
+    
+            // Get original order amount from state
+            const originalOrderAmount = originalOrderAmounts[selectedOrderId];
+            console.log("DEBUG: Original Order Amount (from state):", originalOrderAmount);
+    
+            // Calculate the *difference* in order amount
+            const orderAmountDifference = calculatedTotalAmount - originalOrderAmount;
+            console.log("DEBUG: Order Amount Difference:", orderAmountDifference);
+    
+            // Check credit limit BEFORE update (using the *new* calculated amount)
             const creditLimit = await checkCreditLimit();
-            console.log("DEBUG: Credit Limit:", creditLimit);
-           
-            
-            if (creditLimit=== null) {
+            console.log("DEBUG: Credit Limit (before update):", creditLimit);
+    
+            if (creditLimit === null) {
                 throw new Error("Unable to verify credit limit");
             }
-
+    
             if (calculatedTotalAmount > creditLimit) {
                 Toast.show({
                     type: 'error',
                     text1: 'Credit Limit Exceeded',
                     text2: `Order amount (₹${calculatedTotalAmount}) exceeds your credit limit (₹${creditLimit})`
                 });
+                setLoading(false);
                 return;
             }
-
+    
             const url = `http://${ipAddress}:8090/order_update`;
             const headers = {
                 "Authorization": `Bearer ${token}`,
@@ -331,23 +361,79 @@ const UpdateOrdersU = () => {
                 totalAmount: calculatedTotalAmount,
                 total_amount: calculatedTotalAmount
             };
-
+    
             console.log("UPDATE ORDER - Request URL:", url);
             console.log("UPDATE ORDER - Request Headers:", headers);
             console.log("UPDATE ORDER - Request Body:", JSON.stringify(requestBody, null, 2));
-
+    
             const updateResponse = await fetch(url, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify(requestBody)
             });
-
+    
             if (!updateResponse.ok) {
                 const errorText = await updateResponse.text();
+                setLoading(false);
                 throw new Error(`Failed to update order. Status: ${updateResponse.status}, Text: ${errorText}`);
             }
-
+    
             const updateData = await updateResponse.json();
+    
+            // ====================== Credit Deduct Logic for Order Update - CORRECTED and COMPLETE ==========================
+            const deductCreditOptions = {
+                method: 'POST',
+                url: `http://${ipAddress}:8090/credit-limit/deduct`,
+                data: {
+                    customerId: jwtDecode(token).id,
+                    amountChange: orderAmountDifference, // **Send the AMOUNT DIFFERENCE here**
+                },
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Authorization: `Bearer ${token}`, // **UNCOMMENT IF YOUR /credit-limit/deduct API REQUIRES AUTHORIZATION**
+                },
+            };
+    
+            console.log("Deduct Credit API Request URL (Update Order):", deductCreditOptions.url);
+            console.log("Deduct Credit API Request Headers (Update Order):", deductCreditOptions.headers); // Debug Headers
+            console.log("Deduct Credit API Request Body (Update Order):", JSON.stringify(deductCreditOptions.data, null, 2));
+    
+            try {
+                const deductCreditResponse = await axios(deductCreditOptions);
+                console.log("Deduct Credit API Response Status (Update Order):", deductCreditResponse.status);
+                console.log("Deduct Credit API Response Data (Update Order):", JSON.stringify(deductCreditResponse.data, null, 2));
+    
+                if (deductCreditResponse.status === 200) {
+                    // Credit limit updated successfully after order update
+                    Toast.show({
+                        type: 'success',
+                        text1: 'Order Updated & Credit Updated',
+                        text2: "Order and credit limit updated successfully!"
+                    });
+    
+                } else {
+                    // Handle credit deduction failure
+                    console.error("Error deducting credit limit after order update:", deductCreditResponse.status, deductCreditResponse.statusText);
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Order Updated, but Credit Update Failed',
+                        text2: "Order updated, but credit limit update failed. Please contact support."
+                    });
+                    // Consider if you need to rollback order update or implement compensation logic here
+                }
+    
+            } catch (deductCreditError) {
+                // Handle error during credit deduction API call
+                console.error("Error calling credit-limit/deduct API after order update:", deductCreditError);
+                Toast.show({
+                    type: 'error',
+                    text1: 'Order Updated, but Credit Update Error',
+                    text2: "Order updated, but error updating credit limit. Please contact support."
+                });
+            }
+            // ====================== END: Credit Deduct Logic for Order Update - CORRECTED and COMPLETE ==========================
+    
+    
             Toast.show({
                 type: 'success',
                 text1: 'Order Updated',

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worldline Payment</title>
+    <script src="https://www.paynimo.com/paynimocheckout/client/lib/jquery.min.js"></script>
+    <script type="text/javascript" src="https://www.paynimo.com/paynimocheckout/server/lib/checkout.js"></script>
+</head>
+<body>
+
+    <h2>Worldline Payment Checkout</h2>
+    <button id="btnSubmit">Proceed to Pay</button>
+    <div id="checkoutElement"></div>
+
+    <script type="text/javascript">
+        document.addEventListener("DOMContentLoaded", function () {
+            console.log("Document is ready!");
+
+            function handleResponse(res) {
+                console.log("Payment Response (in handleResponse):", res);
+                // Send the *raw* Worldline response back to React Native via postMessage
+                if (window.ReactNativeWebView) { // Check if running in React Native WebView
+                    window.ReactNativeWebView.postMessage(JSON.stringify(res));
+                } else {
+                    console.warn("ReactNativeWebView not found. Running in a browser?");
+                    // For testing in a browser, you might want to handle the response differently
+                    // e.g., display it on the page.
+                    document.getElementById('checkoutElement').innerHTML = `<pre>${JSON.stringify(res, null, 2)}</pre>`;
+                }
+            }
+
+            document.getElementById("btnSubmit").addEventListener("click", function () {
+                console.log("Proceed to Pay clicked!");
+
+                var reqJson = {
+                    "features": {
+                        "enableAbortResponse": true,
+                        "enableExpressPay": true,
+                        "enableInstrumentDeRegistration": true,
+                        "enableMerTxnDetails": true,
+                        "checkoutElement": "#checkoutElement"
+                    },
+                    "consumerData": {
+                        "deviceId": "WEBSH2",
+                        "token": "e04be9ed85f134a8ca30f609dca6c1f36e742762590daf6ed6edda06275f378a2147f6244ca2295d134beba1e98c6e67140577893b99e6bd34c09d3f2350519c",
+                        "returnUrl": "https://pgproxyuat.in.worldline-solutions.com/linuxsimulator/MerchantResponsePage.jsp",
+                        "responseHandler": handleResponse, // **Important: Keep the responseHandler**
+                        "paymentMode": "all",
+                        "merchantLogoUrl": "https://www.paynimo.com/CompanyDocs/company-logo-vertical.png",
+                        "merchantId": "L3348",
+                        "currency": "INR",
+                        "consumerId": "c964634",
+                        "txnId": "1708068696283",
+                        "items": [{
+                            "itemId": "first",
+                            "amount": "1",
+                            "comAmt": "0"
+                        }]
+                    }
+                };
+
+                console.log("Request JSON:", JSON.stringify(reqJson));
+
+                try {
+                    $.pnCheckout(reqJson);
+                } catch (error) {
+                    console.error("Error:", error);
+                }
+            });
+
+
+            // **Check for paymentResponseFromApp (set by React Native on returnUrl navigation)**
+            if (window.paymentResponseFromApp) {
+                console.log("Payment Response from App detected in HTML:", window.paymentResponseFromApp);
+                handleResponse(window.paymentResponseFromApp); // Process the response
+            }
+
+
+        });
+    </script>
+
+</body>
+</html>

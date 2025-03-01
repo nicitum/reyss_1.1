@@ -635,6 +635,89 @@ router.get('/credit-limit', async (req, res) => {
     }
 });
 
+
+
+router.post('/credit-limit/deduct', async (req, res) => {
+    try {
+        // 1. Get customerId and amountChange from request body
+        const { customerId, amountChange } = req.body; // Renamed from orderAmount to amountChange
+
+        // 2. Validate input
+        if (!customerId || !amountChange || isNaN(parseFloat(amountChange))) {
+            return res.status(400).json({ message: "Customer ID and amountChange are required and amountChange must be a number." });
+        }
+        const amountToChange = parseFloat(amountChange); // Renamed variable
+
+        // 3. Fetch current credit limit for the customer
+        const getCreditLimitQuery = 'SELECT credit_limit FROM credit_limit WHERE customer_id = ?';
+        const creditLimitValues = [customerId];
+        const creditLimitResult = await executeQuery(getCreditLimitQuery, creditLimitValues);
+
+        if (creditLimitResult.length === 0) {
+            return res.status(404).json({ message: "Credit limit not found for this customer." });
+        }
+        let currentCreditLimit = parseFloat(creditLimitResult[0].credit_limit);
+
+        // 4. **Apply the amount change to the credit limit (can be deduction or addition)**
+        const newCreditLimit = currentCreditLimit - amountToChange; // It's still subtraction, but amountChange can be negative for credit addition
+
+        // **Optionally, add a check for negative credit limit if needed**
+        // if (newCreditLimit < 0) {
+        //     newCreditLimit = 0; // Or handle based on your business logic
+        // }
+
+        const updateCreditLimitQuery = 'UPDATE credit_limit SET credit_limit = ? WHERE customer_id = ?';
+        const updateCreditLimitValues = [newCreditLimit, customerId];
+        await executeQuery(updateCreditLimitQuery, updateCreditLimitValues);
+
+        // 5. Return success response
+        return res.status(200).json({ message: "Credit limit updated successfully", newCreditLimit: newCreditLimit }); // Message updated
+
+    } catch (error) {
+        console.error("Error updating credit limit:", error); // Message updated
+        return res.status(500).json({ message: "Internal server error while updating credit limit." }); // Message updated
+    }
+});
+
+
+
+// New API endpoint to update credit_limit.amount_due when an order is placed
+router.post('/credit-limit/update-amount-due-on-order', async (req, res) => {
+    try {
+        const { customerId, totalOrderAmount } = req.body; // Expect customerId and totalOrderAmount in request body
+
+        if (!customerId || totalOrderAmount === undefined || totalOrderAmount === null) {
+            return res.status(400).json({ message: "Missing customerId or totalOrderAmount in request." });
+        }
+
+        // 1. Get current amount_due from credit_limit
+        const getCreditLimitQuery = 'SELECT amount_due FROM credit_limit WHERE customer_id = ?';
+        const creditLimitValues = [customerId];
+        const creditLimitResult = await executeQuery(getCreditLimitQuery, creditLimitValues); // Assuming 'executeQuery' is your DB query function
+
+        let currentAmountDue = 0;
+        if (creditLimitResult.length > 0 && creditLimitResult[0].amount_due !== null) {
+            currentAmountDue = parseFloat(creditLimitResult[0].amount_due);
+        }
+
+        // 2. Calculate new amount_due (add total order amount)
+        const updatedAmountDue = currentAmountDue + parseFloat(totalOrderAmount);
+
+        // 3. Update amount_due in credit_limit table
+        const updateCreditLimitQuery = 'UPDATE credit_limit SET amount_due = ? WHERE customer_id = ?';
+        const updateCreditLimitValues = [updatedAmountDue, customerId];
+        await executeQuery(updateCreditLimitQuery, updateCreditLimitValues);
+
+        console.log(`Credit_limit.amount_due updated for customer ${customerId} by ${totalOrderAmount}. New amount_due: ${updatedAmountDue}`);
+
+        res.status(200).json({ success: true, message: "Credit limit amount_due updated successfully." });
+
+    } catch (error) {
+        console.error("Error updating credit_limit.amount_due in /credit-limit/update-amount-due-on-order:", error);
+        res.status(500).json({ success: false, message: "Failed to update credit limit amount_due." });
+    }
+});
+
 module.exports = router;
 
 

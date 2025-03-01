@@ -360,12 +360,12 @@ const PlaceOrderPage = ({ route }) => {
 
     const confirmSubmitEdit = async () => {
         setConfirmModalVisible(false);
-
+    
         const creditLimit = await checkCreditLimit();
         if (creditLimit === null) {
-            return; // Do not proceed if credit limit check failed (error toast already shown in checkCreditLimit)
+            return; // Do not proceed if credit limit check failed
         }
-
+    
         if (creditLimit !== Infinity && totalOrderAmount > creditLimit) {
             const exceededAmount = (totalOrderAmount - creditLimit).toFixed(2);
             Toast.show({
@@ -375,8 +375,8 @@ const PlaceOrderPage = ({ route }) => {
             });
             return; // Prevent order submission due to credit limit
         }
-
-
+    
+        // If credit limit is OK, proceed with order placement and then credit deduction
         try {
             const userAuthToken = await checkTokenAndRedirect(navigation);
             if (!userAuthToken) {
@@ -387,16 +387,16 @@ const PlaceOrderPage = ({ route }) => {
                 });
                 return;
             }
-
+        
             const transformedData = orderDetails.products.map((item) => ({
                 product_id: item.product_id,
                 quantity: item.quantity,
             }));
             const orderDate = new Date(selectedDate).toISOString();
-
-            const options = {
+    
+            const placeOrderOptions = {
                 method: "POST",
-                url: `http://${ipAddress}:8090/place`,
+                url: `http://${ipAddress}:8090/place`, // Your existing /place API
                 data: {
                     products: transformedData,
                     orderType: shift,
@@ -407,22 +407,104 @@ const PlaceOrderPage = ({ route }) => {
                     "Content-Type": "application/json",
                 },
             };
+    
 
-            const response = await axios(options);
-            if (response.status === 200) {
-                Toast.show({
-                    type: 'success',
-                    text1: 'Order Placed',
-                    text2: "Order Placed successfully!"
+            const placeOrderResponse = await axios(placeOrderOptions);
+            if (placeOrderResponse.status === 200) {
+                // Order placed successfully! Now deduct from credit limit
+                const orderResponseData = placeOrderResponse.data;
+                const placedOrderId = orderResponseData.orderId;
+                console.log('hello',totalOrderAmount)
 
-                });
-                navigation.navigate("IndentPage", { orderPlacedSuccessfully: true });
+                const decodedToken = jwtDecode(userAuthToken);
+                const customerId = decodedToken.id;
+
+
+                const updateAmountDueOptions = {
+                    method: 'POST',
+                    url: `http://${ipAddress}:8090/credit-limit/update-amount-due-on-order`,
+                    data: {
+                        customerId: customerId,
+                        totalOrderAmount: totalOrderAmount,
+                    },
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                };
+
+                try {
+                    const updateAmountDueResponse = await axios(updateAmountDueOptions);
+                    if (updateAmountDueResponse.status == 200) {
+                        console.error("Success ful pdate", updateAmountDueResponse.status, updateAmountDueResponse.statusText, JSON.stringify(updateAmountDueResponse.data));
+                    }
+                } catch (updateAmountDueError) {
+                    console.error("Error calling /credit-limit/update-amount-due-on-order API:", updateAmountDueError);
+                }
+
+
+
+    
+                // ====================== Credit Deduct Logic - CORRECTED for Place Order ==========================
+                const deductCreditOptions = {
+                    method: 'POST',
+                    url: `http://${ipAddress}:8090/credit-limit/deduct`,
+                    data: {
+                        customerId: jwtDecode(userAuthToken).id,
+                        amountChange: totalOrderAmount, // **Corrected: Use 'amountChange' and send totalOrderAmount for new orders**
+                    },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // Authorization: `Bearer ${userAuthToken}`,  // **Authorization header for /credit-limit/deduct - UNCOMMENT if your API requires it**
+                    },
+                };
+    
+                console.log("Deduct Credit API Request URL (Place Order):", deductCreditOptions.url);
+                console.log("Deduct Credit API Request Headers (Place Order):", deductCreditOptions.headers); // Debug Log for Headers
+                console.log("Deduct Credit API Request Body (Place Order):", JSON.stringify(deductCreditOptions.data, null, 2));
+    
+                try {
+                    const deductCreditResponse = await axios(deductCreditOptions);
+                    console.log("Deduct Credit API Response Status (Place Order):", deductCreditResponse.status);
+                    console.log("Deduct Credit API Response Data (Place Order):", JSON.stringify(deductCreditResponse.data, null, 2));
+    
+                    if (deductCreditResponse.status === 200) {
+                        // Credit limit deducted successfully after order placement
+                        Toast.show({
+                            type: 'success',
+                            text1: 'Order Placed & Credit Updated',
+                            text2: "Order Placed and credit limit updated successfully!"
+                        });
+                        navigation.navigate("IndentPage", { orderPlacedSuccessfully: true });
+    
+                    } else {
+                        // Handle credit deduction failure
+                        console.error("Error deducting credit limit after order:", deductCreditResponse.status, deductCreditResponse.statusText);
+                        Toast.show({
+                            type: 'error',
+                            text1: 'Order Placed, but Credit Update Failed',
+                            text2: "Order placed, but there was an error updating your credit limit. Please contact support."
+                        });
+                        navigation.navigate("IndentPage", { orderPlacedSuccessfully: true }); // For now, still navigate to success
+                    }
+    
+                } catch (deductCreditError) {
+                    // Handle error during credit deduction API call
+                    console.error("Error calling credit-limit/deduct API:", deductCreditError);
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Order Placed, but Credit Update Error',
+                        text2: "Order placed, but there was an error updating your credit limit. Please contact support."
+                    });
+                     navigation.navigate("IndentPage", { orderPlacedSuccessfully: true }); // For now, still navigate to success
+                }
+                // ====================== END: Credit Deduct Logic - CORRECTED for Place Order ==========================
+    
             } else {
-                throw new Error("Unexpected response status.");
+                throw new Error("Unexpected response status from /place API.");
             }
         } catch (error) {
             // ... (rest of your error handling for order placement remains the same) ...
-             console.error("Submit error:", error);
+            console.error("Submit error:", error);
             if (error.response) {
                 console.log(error.response.data.message);
                 Toast.show({

@@ -133,6 +133,14 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                                 >
                                     <Text style={styles.subMenuText}>On Behalf</Text>
                                 </TouchableOpacity>
+
+
+                                <TouchableOpacity
+                                    style={styles.subMenuItem}
+                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("CollectCash"); }}
+                                >
+                                    <Text style={styles.subMenuText}>Collect Cash</Text>
+                                </TouchableOpacity>
                             </>
                         ) : (
                             // User Submenu
