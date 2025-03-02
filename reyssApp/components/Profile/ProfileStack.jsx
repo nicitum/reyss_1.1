@@ -11,6 +11,7 @@ import LoadingSlip from './LoadingSlip';
 import PaymentScreen from './Payments';
 import CollectCashPage from './CollectCash';
 import CreditLimitPage from './CreditLimit';
+import AdminAssignedUsersPage from '../route_mgr/AdminAssignedUsers';
 
 const Stack = createStackNavigator();
 
@@ -46,9 +47,9 @@ const ProfileStack = () => {
       />
 
       <Stack.Screen 
-        name="AdminOrderHistory" 
-        component={AdminOrderHistory} 
-        options={{ title: 'Admin Order History' }} 
+        name="AdminAssignedUsersPage" 
+        component={AdminAssignedUsersPage} 
+        options={{ title: 'Orders Assigned' }} 
       />
 
       <Stack.Screen 

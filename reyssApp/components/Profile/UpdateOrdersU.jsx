@@ -380,65 +380,116 @@ const UpdateOrdersU = () => {
     
             const updateData = await updateResponse.json();
     
-            // ====================== Credit Deduct Logic for Order Update - CORRECTED and COMPLETE ==========================
-            const deductCreditOptions = {
-                method: 'POST',
-                url: `http://${ipAddress}:8090/credit-limit/deduct`,
-                data: {
-                    customerId: jwtDecode(token).id,
-                    amountChange: orderAmountDifference, // **Send the AMOUNT DIFFERENCE here**
-                },
-                headers: {
-                    'Content-Type': 'application/json',
-                    // Authorization: `Bearer ${token}`, // **UNCOMMENT IF YOUR /credit-limit/deduct API REQUIRES AUTHORIZATION**
-                },
-            };
+            // ====================== Credit Deduct/Increase Logic for Order Update - CORRECTED and CONDITIONAL for USER APP ==========================
+            if (updateResponse.status === 200) {
+                const customerIdForCreditUpdate = jwtDecode(token).id; // Get customerId for credit APIs
     
-            console.log("Deduct Credit API Request URL (Update Order):", deductCreditOptions.url);
-            console.log("Deduct Credit API Request Headers (Update Order):", deductCreditOptions.headers); // Debug Headers
-            console.log("Deduct Credit API Request Body (Update Order):", JSON.stringify(deductCreditOptions.data, null, 2));
+                if (orderAmountDifference > 0) {
+                    // Order amount increased, deduct credit
+                    const deductCreditOptions = {
+                        method: 'POST',
+                        url: `http://${ipAddress}:8090/credit-limit/deduct`,
+                        data: {
+                            customerId: customerIdForCreditUpdate,
+                            amountChange: orderAmountDifference, // Deduct the INCREASE in amount
+                        },
+                        headers: { 'Content-Type': 'application/json' },
+                    };
     
-            try {
-                const deductCreditResponse = await axios(deductCreditOptions);
-                console.log("Deduct Credit API Response Status (Update Order):", deductCreditResponse.status);
-                console.log("Deduct Credit API Response Data (Update Order):", JSON.stringify(deductCreditResponse.data, null, 2));
+                    try {
+                        const deductCreditResponse = await axios(deductCreditOptions);
+                        if (deductCreditResponse.status !== 200) {
+                            console.error("Error deducting credit limit on order update (User App):", deductCreditResponse.status, deductCreditResponse.statusText, deductCreditResponse.data);
+                            Toast.show({ type: 'error', text1: 'Credit Update Error', text2: "Error deducting credit. Please contact support." });
+                        } else {
+                            console.log("Credit limit DEDUCTED successfully on order update (User App):", deductCreditResponse.data);
+                        }
+                    } catch (deductCreditError) {
+                        console.error("Error calling /credit-limit/deduct API (on order update - User App):", deductCreditError);
+                        Toast.show({ type: 'error', text1: 'Credit Update Error', text2: "Error updating credit. Please contact support." });
+                    }
     
-                if (deductCreditResponse.status === 200) {
-                    // Credit limit updated successfully after order update
-                    Toast.show({
-                        type: 'success',
-                        text1: 'Order Updated & Credit Updated',
-                        text2: "Order and credit limit updated successfully!"
-                    });
     
+                } else if (orderAmountDifference < 0) {
+                    // Order amount decreased, increase credit (refund)
+                    const increaseCreditOptions = {
+                        method: 'POST',
+                        url: `http://${ipAddress}:8090/increase-credit-limit`,
+                        data: {
+                            customerId: customerIdForCreditUpdate,
+                            amountToIncrease: Math.abs(orderAmountDifference), // Increase by the ABSOLUTE value of decrease
+                        },
+                        headers: { 'Content-Type': 'application/json' },
+                    };
+    
+                    try {
+                        const increaseCreditResponse = await axios(increaseCreditOptions);
+                        if (increaseCreditResponse.status !== 200) {
+                            console.error("Error increasing credit limit on order update (User App):", increaseCreditResponse.status, increaseCreditResponse.statusText, increaseCreditResponse.data);
+                            Toast.show({ type: 'error', text1: 'Credit Update Error', text2: "Error refunding credit. Please contact support." });
+                        } else {
+                            console.log("Credit limit INCREASED successfully on order update (User App):", increaseCreditResponse.data);
+                        }
+                    } catch (increaseCreditError) {
+                        console.error("Error calling /increase-credit-limit API (on order update - User App):", increaseCreditError);
+                        Toast.show({ type: 'error', text1: 'Credit Update Error', text2: "Error updating credit. Please contact support." });
+                    }
                 } else {
-                    // Handle credit deduction failure
-                    console.error("Error deducting credit limit after order update:", deductCreditResponse.status, deductCreditResponse.statusText);
-                    Toast.show({
-                        type: 'error',
-                        text1: 'Order Updated, but Credit Update Failed',
-                        text2: "Order updated, but credit limit update failed. Please contact support."
-                    });
-                    // Consider if you need to rollback order update or implement compensation logic here
+                    console.log("Order amount unchanged, no credit limit adjustment needed. (User App)");
                 }
     
-            } catch (deductCreditError) {
-                // Handle error during credit deduction API call
-                console.error("Error calling credit-limit/deduct API after order update:", deductCreditError);
+                // --- Amount Due Update Logic with Logs - INTEGRATED HERE for USER APP ---
+                const updateAmountDueOptions = {
+                    method: 'POST',
+                    url: `http://${ipAddress}:8090/credit-limit/update-amount-due-on-order`,
+                    data: {
+                        customerId: customerIdForCreditUpdate,
+                        totalOrderAmount: calculatedTotalAmount,
+                        originalOrderAmount: originalOrderAmount, // Pass original amount for backend calculation
+                    },
+                    headers: { 'Content-Type': 'application/json' },
+                };
+    
+                console.log("DEBUG - handleUpdateOrder (User App): Amount Due API - Request URL:", updateAmountDueOptions.url);
+                console.log("DEBUG - handleUpdateOrder (User App): Amount Due API - Request Headers:", updateAmountDueOptions.headers);
+                console.log("DEBUG - handleUpdateOrder (User App): Amount Due API - Request Body:", JSON.stringify(updateAmountDueOptions.data, null, 2));
+                console.log("DEBUG - handleUpdateOrder (User App): Amount Due API - calculatedTotalAmount BEFORE API call:", calculatedTotalAmount);
+    
+    
+                try {
+                    const updateAmountDueResponse = await axios(updateAmountDueOptions);
+                    console.log("DEBUG - handleUpdateOrder (User App): Amount Due API - Response Status:", updateAmountDueResponse.status);
+                    console.log("DEBUG - handleUpdateOrder (User App): Amount Due API - Response Data:", JSON.stringify(updateAmountDueResponse.data, null, 2));
+    
+                    if (updateAmountDueResponse.status !== 200) {
+                        console.error("Amount Due Update Failed with status (User App):", updateAmountDueResponse.status, updateAmountDueResponse.statusText, updateAmountDueResponse.data);
+                        Toast.show({ type: "error", text1: "Credit Update Error", text2: "Error updating amount due." });
+                    } else {
+                        console.log("Amount Due updated successfully! (User App)");
+                    }
+                } catch (error) {
+                    console.error("Error calling /credit-limit/update-amount-due-on-order API (User App):", error);
+                    Toast.show({ type: "error", text1: "Credit Update Error", text2: "Error updating amount due." });
+                }
+    
+    
+                Toast.show({
+                    type: 'success',
+                    text1: 'Order Updated & Credit Updated',
+                    text2: "Order and credit limit adjusted successfully!"
+                });
+    
+            } else { // if (updateResponse.status !== 200)
                 Toast.show({
                     type: 'error',
-                    text1: 'Order Updated, but Credit Update Error',
-                    text2: "Order updated, but error updating credit limit. Please contact support."
+                    text1: 'Order Update Failed',
+                    text2: updateData.message || "Failed to update order."
                 });
+                setError(updateData.message || "Failed to update order.");
             }
-            // ====================== END: Credit Deduct Logic for Order Update - CORRECTED and COMPLETE ==========================
+            // ====================== END: Credit Deduct/Increase Logic for Order Update - CORRECTED and CONDITIONAL for USER APP ==========================
     
     
-            Toast.show({
-                type: 'success',
-                text1: 'Order Updated',
-                text2: updateData.message || "Order updated successfully!"
-            });
             await fetchUsersOrders();
             setSelectedOrderId(null);
             setProducts([]);
@@ -454,41 +505,131 @@ const UpdateOrdersU = () => {
 
     const handleDeleteOrder = async (orderIdToDelete) => {
         console.log("handleDeleteOrder CALLED - Order ID:", orderIdToDelete);
-
+    
         setOrderDeleteLoading(true);
         setOrderDeleteLoadingId(orderIdToDelete);
         setError(null);
+    
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
-            const url = `http://${ipAddress}:8090/cancel_order/${orderIdToDelete}`;
             const headers = {
-                "Authorization": `Bearer ${token}`,
+                Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
             };
-
-            const deleteOrderResponse = await fetch(url, {
-                method: 'POST',
-                headers: headers,
-            });
-
+    
+            const deleteOrderResponse = await fetch(
+                `http://${ipAddress}:8090/cancel_order/${orderIdToDelete}`,
+                { method: 'POST', headers }
+            );
+    
             if (!deleteOrderResponse.ok) {
                 const errorText = await deleteOrderResponse.text();
                 const message = `Failed to delete order. Status: ${deleteOrderResponse.status}, Text: ${errorText}`;
                 throw new Error(message);
             }
-
+    
             const deleteOrderData = await deleteOrderResponse.json();
-
+    
             if (deleteOrderData.success) {
                 Toast.show({
                     type: 'success',
                     text1: 'Order Cancelled',
                     text2: deleteOrderData.message || `Order ID ${orderIdToDelete} cancelled successfully.`
                 });
-                
+    
+                // **--- START: Credit Limit Increase Logic ---**
+                // **Find the cancelled order in the `orders` state array**
+                const cancelledOrder = orders.find(order => order.id === orderIdToDelete);
+    
+                if (cancelledOrder) {
+                    const cancelledOrderAmount = cancelledOrder.total_amount;
+                    const customerId = cancelledOrder.customer_id;
+    
+                    console.log("DEBUG - handleDeleteOrder: cancelledOrder:", cancelledOrder);
+                    console.log("DEBUG - handleDeleteOrder: cancelledOrderAmount:", cancelledOrderAmount);
+                    console.log("DEBUG - handleDeleteOrder: customerId:", customerId);
+    
+    
+                    if (customerId && cancelledOrderAmount !== undefined && cancelledOrderAmount !== null) {
+                        const requestBodyIncreaseCL = {
+                            customerId: customerId,
+                            amountToIncrease: cancelledOrderAmount,
+                        };
+                        console.log("DEBUG - handleDeleteOrder: increaseCreditLimit Request Body:", JSON.stringify(requestBodyIncreaseCL));
+    
+                        const creditLimitIncreaseResponse = await fetch(
+                            `http://${ipAddress}:8090/increase-credit-limit`,
+                            {
+                                method: "POST",
+                                headers,
+                                body: JSON.stringify(requestBodyIncreaseCL),
+                            }
+                        );
+    
+                        console.log("DEBUG - handleDeleteOrder: increaseCreditLimit Response Status:", creditLimitIncreaseResponse.status);
+                        console.log("DEBUG - handleDeleteOrder: increaseCreditLimit Response Status Text:", creditLimitIncreaseResponse.statusText);
+    
+    
+                        if (!creditLimitIncreaseResponse.ok) {
+                            console.error("Failed to increase credit limit after order cancellation.");
+                        } else {
+                            const creditLimitIncreaseData = await creditLimitIncreaseResponse.json();
+                            console.log("Credit limit increased successfully:", creditLimitIncreaseData);
+                        }
+                    } else {
+                        console.warn("DEBUG - handleDeleteOrder: customerId or cancelledOrderAmount missing or invalid, cannot increase credit limit.");
+                    }
+                } else {
+                    console.warn("DEBUG - handleDeleteOrder: Cancelled order not found in orders array, cannot get details for credit limit increase.");
+                }
+                // **--- END: Credit Limit Increase Logic ---**
+    
+    
+                // ====================== Amount Due Update Logic for Order Cancellation - INTEGRATED HERE ==========================
+                if (cancelledOrder) { // **Re-check if cancelledOrder exists, just to be safe**
+                    const originalTotalAmount = cancelledOrder.total_amount; // Get original order amount
+                    const customerIdForAmountDueUpdate = cancelledOrder.customer_id; // Get customerId
+    
+                    const updateAmountDueOptions = {
+                        method: 'POST',
+                        url: `http://${ipAddress}:8090/credit-limit/update-amount-due-on-order`,
+                        data: {
+                            customerId: customerIdForAmountDueUpdate,
+                            totalOrderAmount: 0, // **Set totalOrderAmount to 0 on cancellation**
+                            originalOrderAmount: originalTotalAmount, // Pass original amount for backend calculation (if needed)
+                        },
+                        headers: { 'Content-Type': 'application/json' },
+                    };
+    
+                    console.log("DEBUG - handleDeleteOrder: Amount Due API - Request URL:", updateAmountDueOptions.url);
+                    console.log("DEBUG - handleDeleteOrder: Amount Due API - Request Headers:", updateAmountDueOptions.headers);
+                    console.log("DEBUG - handleDeleteOrder: Amount Due API - Request Body:", JSON.stringify(updateAmountDueOptions.data, null, 2));
+                    console.log("DEBUG - handleDeleteOrder: Amount Due API - totalOrderAmount BEFORE API call: 0"); // Total amount is now 0
+    
+                    try {
+                        const updateAmountDueResponse = await axios(updateAmountDueOptions);
+                        console.log("DEBUG - handleDeleteOrder: Amount Due API - Response Status:", updateAmountDueResponse.status);
+                        console.log("DEBUG - handleDeleteOrder: Amount Due API - Response Data:", JSON.stringify(updateAmountDueResponse.data, null, 2));
+    
+                        if (updateAmountDueResponse.status !== 200) {
+                            console.error("Amount Due Update Failed on order cancellation:", updateAmountDueResponse.status, updateAmountDueResponse.statusText, updateAmountDueResponse.data);
+                            Toast.show({ type: "error", text1: "Credit Update Error", text2: "Error updating amount due on cancellation." });
+                        } else {
+                            console.log("Amount Due updated successfully on order cancellation!");
+                        }
+                    } catch (updateAmountDueError) {
+                        console.error("Error calling /credit-limit/update-amount-due-on-order API (on order cancellation):", updateAmountDueError);
+                        Toast.show({ type: "error", text1: "Credit Update Error", text2: "Error updating amount due on cancellation." });
+                    }
+                } else {
+                    console.warn("DEBUG - handleDeleteOrder: Cancelled order details not found again before Amount Due API call. This should not happen.");
+                    Toast.show({ type: 'warning', text1: 'Order Cancelled', text2: "Order cancelled, but amount due update might be incomplete. Please contact support." });
+                }
+                // ====================== END: Amount Due Update Logic for Order Cancellation ==========================
+    
+    
                 // Fetch updated orders list immediately after successful cancellation
                 await fetchUsersOrders();
-                
                 setSelectedOrderId(null);
                 setProducts([]);
             } else {
@@ -499,7 +640,7 @@ const UpdateOrdersU = () => {
                 });
                 setError(deleteOrderData.message || "Failed to cancel the order.");
             }
-
+    
         } catch (deleteOrderError) {
             console.error("DELETE ORDER - Error:", deleteOrderError);
             setError(deleteOrderError.message || "Failed to cancel order.");

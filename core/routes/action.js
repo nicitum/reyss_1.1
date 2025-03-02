@@ -16,6 +16,9 @@ router.post("/update-order-status", async (req, res) => {
         const query = "UPDATE orders SET approve_status = ?, altered = CASE WHEN ? = 'Accepted' THEN 'No' ELSE altered END WHERE id = ?";
         const values = [approve_status, approve_status, id];
 
+
+
+
         // Execute the query
         const result = await executeQuery(query, values);
 
@@ -371,7 +374,8 @@ router.post("/order_update", async (req, res) => {
             UPDATE orders
             SET total_amount = ?,
                 cancelled = ?,
-                altered = 'Yes'
+                altered = 'Yes',
+                approve_status = 'Altered'
             WHERE id = ?
         `;
         await executeQuery(updateOrderQuery, [totalAmount, cancelledStatus, orderId]);
@@ -678,11 +682,10 @@ router.post('/credit-limit/deduct', async (req, res) => {
 });
 
 
-
-// New API endpoint to update credit_limit.amount_due when an order is placed
+// Modified API endpoint to correctly update credit_limit.amount_due for new orders AND order updates
 router.post('/credit-limit/update-amount-due-on-order', async (req, res) => {
     try {
-        const { customerId, totalOrderAmount } = req.body; // Expect customerId and totalOrderAmount in request body
+        const { customerId, totalOrderAmount, originalOrderAmount } = req.body; // Expect originalOrderAmount for updates
 
         if (!customerId || totalOrderAmount === undefined || totalOrderAmount === null) {
             return res.status(400).json({ message: "Missing customerId or totalOrderAmount in request." });
@@ -691,92 +694,105 @@ router.post('/credit-limit/update-amount-due-on-order', async (req, res) => {
         // 1. Get current amount_due from credit_limit
         const getCreditLimitQuery = 'SELECT amount_due FROM credit_limit WHERE customer_id = ?';
         const creditLimitValues = [customerId];
-        const creditLimitResult = await executeQuery(getCreditLimitQuery, creditLimitValues); // Assuming 'executeQuery' is your DB query function
+        const creditLimitResult = await executeQuery(getCreditLimitQuery, creditLimitValues);
 
         let currentAmountDue = 0;
         if (creditLimitResult.length > 0 && creditLimitResult[0].amount_due !== null) {
             currentAmountDue = parseFloat(creditLimitResult[0].amount_due);
         }
 
-        // 2. Calculate new amount_due (add total order amount)
-        const updatedAmountDue = currentAmountDue + parseFloat(totalOrderAmount);
+        let updatedAmountDue;
+
+        if (originalOrderAmount !== undefined && originalOrderAmount !== null) {
+            // It's an order UPDATE
+
+            const orderAmountDifference = parseFloat(totalOrderAmount) - parseFloat(originalOrderAmount);
+
+            updatedAmountDue = currentAmountDue + orderAmountDifference; // Add the DIFFERENCE (can be negative)
+
+            if (updatedAmountDue < 0) { // Ensure amount_due doesn't go below zero (optional - depending on your business logic)
+                updatedAmountDue = 0;
+            }
+
+
+        } else {
+            // It's a NEW order
+            updatedAmountDue = currentAmountDue + parseFloat(totalOrderAmount); // Original logic for new orders (ADD)
+        }
+
 
         // 3. Update amount_due in credit_limit table
         const updateCreditLimitQuery = 'UPDATE credit_limit SET amount_due = ? WHERE customer_id = ?';
         const updateCreditLimitValues = [updatedAmountDue, customerId];
         await executeQuery(updateCreditLimitQuery, updateCreditLimitValues);
 
-        console.log(`Credit_limit.amount_due updated for customer ${customerId} by ${totalOrderAmount}. New amount_due: ${updatedAmountDue}`);
+        console.log(`Credit_limit.amount_due updated for customer ${customerId}. New amount_due: ${updatedAmountDue}`);
 
-        res.status(200).json({ success: true, message: "Credit limit amount_due updated successfully." });
-
+        res.status(200).json({ success: true, message: "Credit limit amount_due updated successfully.", updatedAmountDue: updatedAmountDue }); // Send back updatedAmountDue
     } catch (error) {
         console.error("Error updating credit_limit.amount_due in /credit-limit/update-amount-due-on-order:", error);
         res.status(500).json({ success: false, message: "Failed to update credit limit amount_due." });
     }
 });
 
-
 router.post('/collect_cash', async (req, res) => {
     try {
-        let customerId = req.query.customerId; 
+        let customerId = req.query.customerId || req.body.customerId;
         if (!customerId) {
-            customerId = req.body.customerId; // Fallback to body if not in query
-        } 
-        const { cash } = req.body;        // Get cash from request body (optional)
-
-        // 1. Validate customerId
-        if (!customerId) {
-            return res.status(400).json({ message: "Customer ID is required as a query parameter" });
+            return res.status(400).json({ message: "Customer ID is required" });
         }
 
-        // 2. Fetch Current Customer Data
-        const fetchQuery = 'SELECT amount_due, amount_paid, credit_limit FROM credit_limit WHERE customer_id = ?';
-        const fetchValues = [customerId];
-        const customerDataResult = await executeQuery(fetchQuery, fetchValues); // Assuming executeQuery function exists
+        const { cash } = req.body;
+
+        // Fetch current customer data
+        const fetchQuery = `
+            SELECT amount_due, amount_paid_cash, credit_limit
+            FROM credit_limit
+            WHERE customer_id = ?`;
+        const customerDataResult = await executeQuery(fetchQuery, [customerId]);
 
         if (customerDataResult.length === 0) {
             return res.status(404).json({ message: "Customer not found" });
         }
 
-        const currentCustomerData = customerDataResult[0];
-        let amountDue = currentCustomerData.amount_due; // Default amount_due to return if no cash
+        const { amount_due, amount_paid_cash = 0, credit_limit = 0 } = customerDataResult[0];
+        let updatedAmountDue = amount_due;
+        let newAmountPaidCash = amount_paid_cash; // Initialize here
 
-        // 3. Handle cash Input (Optional)
-        if (cash !== undefined && cash !== null) { // Check if cash is provided (not undefined and not null)
-            const currentAmountPaid = currentCustomerData.amount_paid || 0; // Default to 0 if null
-            const currentCreditLimit = currentCustomerData.credit_limit || 0; // Default to 0 if null
-
-            const parsedCash = parseFloat(cash); // Parse cash to a number (important!)
+        if (cash !== undefined && cash !== null) {
+            const parsedCash = parseFloat(cash);
             if (isNaN(parsedCash) || parsedCash < 0) {
-                return res.status(400).json({ message: "Invalid cash amount provided. Cash must be a non-negative number." });
+                return res.status(400).json({ message: "Invalid cash amount. Must be a non-negative number." });
             }
 
-            const newAmountPaid = currentAmountPaid + parsedCash;
-            const newAmountDue = Math.max(0, amountDue - parsedCash); // Ensure amount_due doesn't go below 0
-            const newCreditLimit = currentCreditLimit + parsedCash;
+            newAmountPaidCash = amount_paid_cash + parsedCash;
+            updatedAmountDue = Math.max(0, amount_due - parsedCash);
+            const newCreditLimit = credit_limit + parsedCash;
 
-            // 4. Database Update (when cash is provided)
+            // **1. Insert into payment_transactions table**
+            const insertTransactionQuery = `
+                INSERT INTO payment_transactions (customer_id, payment_method, payment_amount, payment_date)
+                VALUES (?, ?, ?, NOW())`; // NOW() gets current datetime in MySQL
+            const transactionValues = [customerId, 'cash', parsedCash];
+            await executeQuery(insertTransactionQuery, transactionValues);
+
+            // **2. Update credit_limit table**
             const updateQuery = `
                 UPDATE credit_limit
-                SET amount_paid = ?, amount_due = ?, credit_limit = ?
-                WHERE customer_id = ?
-            `;
-            const updateValues = [newAmountPaid, newAmountDue, newCreditLimit, customerId];
+                SET amount_paid_cash = ?, amount_due = ?, credit_limit = ?, cash_paid_date = UNIX_TIMESTAMP()
+                WHERE customer_id = ?`;
+            const updateValues = [newAmountPaidCash, updatedAmountDue, newCreditLimit, customerId];
             await executeQuery(updateQuery, updateValues);
 
             return res.status(200).json({
-                message: "Cash collected and customer data updated successfully",
-                updatedAmountPaid: newAmountPaid,
-                updatedAmountDue: newAmountDue,
+                message: "Cash collected and transaction recorded successfully", // Updated message
+                updatedAmountPaidCash: newAmountPaidCash,
+                updatedAmountDue,
                 updatedCreditLimit: newCreditLimit
             });
-
-        } else {
-            // Cash is not provided, only return amount_due
-            return res.status(200).json({ amountDue: amountDue });
         }
 
+        return res.status(200).json({ amountDue: updatedAmountDue });
     } catch (error) {
         console.error("Error processing cash collection:", error);
         return res.status(500).json({ message: "Internal server error" });
@@ -862,6 +878,127 @@ router.put('/update_credit_limit', async (req, res) => {
     }
 });
 
+router.post('/increase-credit-limit', async (req, res) => { // Use POST method as it's for performing an action
+    try {
+        const { customerId, amountToIncrease } = req.body; // Expecting customerId and amountToIncrease in request body
+
+        // Validate input
+        if (!customerId) {
+            return res.status(400).json({ message: "Customer ID is required in the request body" });
+        }
+        if (amountToIncrease === undefined || amountToIncrease === null || isNaN(Number(amountToIncrease))) {
+            return res.status(400).json({ message: "Valid amount to increase is required in the request body" });
+        }
+        if (Number(amountToIncrease) <= 0) { // Ensure amount to increase is positive
+            return res.status(400).json({ message: "Amount to increase must be a positive value" });
+        }
+
+        // SQL query to increase the credit limit
+        const query = 'UPDATE credit_limit SET credit_limit = credit_limit + ? WHERE customer_id = ?'; // Increment existing credit_limit
+        const values = [amountToIncrease, customerId];
+
+        const result = await executeQuery(query, values);
+
+        if (result.affectedRows > 0) {
+            return res.status(200).json({ message: "Credit limit increased successfully" });
+        } else {
+            return res.status(404).json({ message: "Customer ID not found or credit limit update failed (no customer or no credit_limit entry)" });
+        }
+
+    } catch (error) {
+        console.error("Error increasing credit limit:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+});
+
+//Financial reporting sections
+
+
+
+router.get('/get_customer_transaction_details', async (req, res) => { // Keeping the same endpoint name, can be renamed
+    try {
+        const query = `
+            SELECT
+                cl.customer_id,
+                cl.customer_name,
+                cl.amount_due,
+                SUM(pt.payment_amount) AS total_amount_paid_customer -- Calculate total paid
+            FROM
+                credit_limit AS cl
+            LEFT JOIN  -- Use LEFT JOIN to include customers even if they have no transactions yet
+                payment_transactions AS pt ON cl.customer_id = pt.customer_id
+            GROUP BY
+                cl.customer_id, cl.customer_name, cl.amount_due -- Group by customer to aggregate payments
+            ORDER BY
+                cl.customer_name; -- Order by customer name for readability
+        `;
+
+        const customerSummaryResult = await executeQuery(query, []); // No values needed
+
+        // Format the results for better presentation
+        const formattedCustomerSummaries = customerSummaryResult.map(customerSummary => ({
+            customer_id: customerSummary.customer_id,
+            customer_name: customerSummary.customer_name,
+            amount_due: parseFloat(customerSummary.amount_due).toFixed(2),
+            total_amount_paid: parseFloat(customerSummary.total_amount_paid_customer || 0).toFixed(2), // Format total paid, handle NULL if no payments yet
+        }));
+
+        if (formattedCustomerSummaries.length === 0) {
+            return res.status(404).json({ message: "No customers found" }); // Updated message
+        }
+
+        res.status(200).json(formattedCustomerSummaries); // Send array of customer summary objects
+
+    } catch (error) {
+        console.error("Error fetching cumulative customer payment summaries:", error); // Updated error message
+        res.status(500).json({ message: "Failed to fetch cumulative customer payment summaries" }); // Updated error message
+    }
+});
+
+
+
+router.get('/get_customer_credit_summaries', async (req, res) => { // Renamed endpoint to be more descriptive
+    try {
+        const query = `
+            SELECT
+                customer_id,
+                customer_name,
+                credit_limit,
+                amount_due,
+                amount_paid_cash,
+                amount_paid_online
+            FROM
+                credit_limit
+            ORDER BY
+                customer_name; -- Order by customer name for readability
+        `;
+
+        const customerCreditSummaryResult = await executeQuery(query, []); // No values needed
+
+        // Format the results for better presentation
+        const formattedCustomerCreditSummaries = customerCreditSummaryResult.map(customerCredit => {
+            const totalAmountPaid = parseFloat(customerCredit.amount_paid_cash || 0) + parseFloat(customerCredit.amount_paid_online || 0); // Calculate total paid
+
+            return {
+                customer_id: customerCredit.customer_id,
+                customer_name: customerCredit.customer_name,
+                credit_limit: parseFloat(customerCredit.credit_limit).toFixed(2),
+                amount_due: parseFloat(customerCredit.amount_due).toFixed(2),
+                total_amount_paid: totalAmountPaid.toFixed(2), // New field: Total Paid (cash + online)
+            };
+        });
+
+        if (formattedCustomerCreditSummaries.length === 0) {
+            return res.status(404).json({ message: "No customers found" }); // Message updated
+        }
+
+        res.status(200).json(formattedCustomerCreditSummaries); // Send array of customer credit summary objects
+
+    } catch (error) {
+        console.error("Error fetching customer credit summaries:", error); // Error message updated
+        res.status(500).json({ message: "Failed to fetch customer credit summaries" }); // Error message updated
+    }
+});
 module.exports = router;
 
 

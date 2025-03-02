@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState,  useCallback } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,9 @@ import { ipAddress } from "../../urls";
 import { checkTokenAndRedirect } from "../../services/auth";
 import { useNavigation } from "@react-navigation/native";
 import { jwtDecode } from "jwt-decode";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
+import moment from 'moment';
 
 
 const AdminOrderHistory = () => {
@@ -24,41 +27,87 @@ const AdminOrderHistory = () => {
 
  
 
-  const fetchOrders = async () => {
-        try {
-            setLoading(true);
-            const token = await checkTokenAndRedirect(navigation);
-            if (!token) throw new Error("No authorization token found.");
+  // Use useCallback to memoize fetchOrders function - important for useFocusEffect
+  const fetchOrders = useCallback(async () => {
+    setLoading(true);// Reset error on new fetch attempt
+    try {
+        const token = await AsyncStorage.getItem("userAuthToken"); // Get token from AsyncStorage
+        const decodedToken = jwtDecode(token);
+        const adminId = decodedToken.id1;
 
-            const decodedToken = jwtDecode(token);
-            const adminId = decodedToken.id1;
+        const url = `http://${ipAddress}:8090/get-admin-orders/${adminId}`;
+        const headers = {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+        };
 
-            let url = `http://${ipAddress}:8090/get-admin-orders/${adminId}`;
-           
+        console.log("FETCH ADMIN ORDERS - Request URL:", url);
+        console.log("FETCH ADMIN ORDERS - Request Headers:", headers);
 
-            const response = await axios.get(url, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-           
-            if (response.data.success) {
-                 setOrders(response.data.orders || []);
-            }
-           
-        } catch (error) {
-            console.error("Error fetching admin orders:", error);
-            Alert.alert("Error", "Failed to fetch orders. Please try again.");
-             setOrders([]);
-        } finally {
-            setLoading(false);
+        const ordersResponse = await fetch(url, { headers });
+
+        console.log("FETCH ADMIN ORDERS - Response Status:", ordersResponse.status);
+        console.log("FETCH ADMIN ORDERS - Response Status Text:", ordersResponse.statusText);
+
+        if (!ordersResponse.ok) {
+            const errorText = await ordersResponse.text();
+            const message = `Failed to fetch admin orders. Status: ${ordersResponse.status}, Text: ${errorText}`;
+            console.error("FETCH ADMIN ORDERS - Error Response Text:", errorText);
+            throw new Error(message);
         }
-    };
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+        const ordersData = await ordersResponse.json();
+        console.log("FETCH ADMIN ORDERS - Response Data:", ordersData);
+        let fetchedOrders = ordersData.orders;
 
+        // **FILTER ORDERS FOR TODAY (Epoch Seconds & CORRECT FORMAT & .unix()):**
+        const todayFormatted = moment().format("YYYY-MM-DD"); // Corrected format to YYYY-MM-DD (more standard)
+        console.log("DEBUG: Today's Formatted Date (YYYY-MM-DD):", todayFormatted); // DEBUG LOG
+
+        const todaysOrders = fetchedOrders.filter(order => {
+            if (!order.placed_on) {
+                console.log("DEBUG: order.placed_on is missing for order ID:", order.id); // DEBUG LOG
+                return false; // Skip if placed_on is missing or invalid
+            }
+
+            console.log("DEBUG: Raw order.placed_on value:", order.placed_on, typeof order.placed_on); // DEBUG LOG - Raw value and type
+
+            const parsedEpochSeconds = parseInt(order.placed_on, 10); // Still parse to integer
+            console.log("DEBUG: Parsed Epoch Timestamp (parseInt) - Seconds:", parsedEpochSeconds, typeof parsedEpochSeconds); // DEBUG LOG - Parsed integer (seconds)
+
+            // **Use moment.unix() to parse epoch seconds:**
+            const orderDateMoment = moment.unix(parsedEpochSeconds); // **Use moment.unix()**
+            console.log("DEBUG: Moment Object from Epoch (Seconds using .unix()):", orderDateMoment); // DEBUG LOG - Moment object (parsed as seconds)
+            console.log("DEBUG: Moment Object valueOf (Epoch in ms AFTER .unix()):", orderDateMoment.valueOf()); // DEBUG LOG - Epoch value from Moment (in ms)
+
+            const orderDateFormatted = orderDateMoment.format("YYYY-MM-DD"); // Corrected format to YYYY-MM-DD
+            console.log("DEBUG: Formatted Order Date (YYYY-MM-DD):", orderDateFormatted); // DEBUG LOG - Formatted date
+
+            return orderDateFormatted === todayFormatted; // Compare formatted dates
+        });
+
+        setOrders(todaysOrders);
+        console.log('todayssss order',todaysOrders)// Set the filtered orders
+
+
+    } catch (fetchOrdersError) {
+        console.error("FETCH ADMIN ORDERS - Fetch Error:", fetchOrdersError);
+
+        Alert.alert("Error", fetchOrdersError.message || "Failed to fetch admin orders."); // Show error alert
+    } finally {
+        setLoading(false);
+    }
+}, [navigation]);
+
+useFocusEffect(  // Use useFocusEffect to fetch orders on screen focus
+  useCallback(() => {
+      fetchOrders();
+      return () => {
+          // Optional: Cleanup function if needed when screen loses focus
+          // (currently empty in this example)
+      };
+  }, [fetchOrders]) // Dependency array: fetchOrders (memoized function)
+);
 
   const fetchOrderProducts = async (orderId) => {
     try {
@@ -98,12 +147,23 @@ const AdminOrderHistory = () => {
     return (
       <View style={detailStyles.orderDetailsContainer}>
         <Text style={detailStyles.orderDetailsTitle}>Order Details:</Text>
+        
+        {/* Header Row */}
+        <View style={detailStyles.headerRow}>
+          <Text style={detailStyles.headerCell}>Product</Text>
+          <Text style={detailStyles.headerCell}>Category</Text>
+          <Text style={detailStyles.headerCell}>Quantity</Text>
+          <Text style={detailStyles.headerCell}>Price</Text>
+        </View>
+
+        {/* Product Rows */}
         {products.length > 0 ? (
           products.map((product, index) => (
-            <View key={`${orderId}-${product.product_id}-${index}`} style={detailStyles.productDetailItem}>
-              <Text style={detailStyles.productDetailText}>
-                {product.name} - Qty: {product.quantity}, Price: ₹{product.price}, Cat: {product.category}
-              </Text>
+            <View key={`${orderId}-${product.product_id}-${index}`} style={detailStyles.productRow}>
+              <Text style={detailStyles.productCell}>{product.name}</Text>
+              <Text style={detailStyles.productCell}>{product.category}</Text>
+              <Text style={detailStyles.productCell}>{product.quantity}</Text>
+              <Text style={detailStyles.productCell}>₹{product.price}</Text>
             </View>
           ))
         ) : (
@@ -181,7 +241,7 @@ const AdminOrderHistory = () => {
                   </View>
                   <View style={[styles.cell, styles.statusCell, { flex: 1 }]}>
                     <Text style={styles.deliveryStatusText}>
-                      {(order.delivery_status || 'pending').toUpperCase()}
+                      {(order.approve_status|| 'pending').toUpperCase()}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -320,34 +380,51 @@ const styles = StyleSheet.create({
 });
 
 const detailStyles = StyleSheet.create({
-    orderDetailsContainer: {
-      padding: 10,
-      backgroundColor: '#f9f9f9',
-      borderBottomWidth: 1,
-      borderBottomColor: '#E0E0E0',
-    },
-    orderDetailsTitle: {
-      fontSize: 14,
-      fontWeight: 'bold',
-      marginBottom: 8,
-      color: '#333',
-    },
-    productDetailItem: {
-      paddingVertical: 6,
-      borderBottomWidth: 1,
-      borderBottomColor: '#ddd',
-      marginBottom: 6,
-    },
-    productDetailText: {
-      fontSize: 12,
-      color: '#555',
-    },
-    noProductsText: {
-      fontSize: 12,
-      color: '#777',
-      textAlign: 'center',
-      marginTop: 6,
-    }
-  });
+  orderDetailsContainer: {
+    padding: 10,
+    backgroundColor: '#f9f9f9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  orderDetailsTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#333',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    backgroundColor: '#f0f0f0',
+    paddingVertical: 8,
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
+  },
+  headerCell: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    color: '#333',
+  },
+  productRow: {
+    flexDirection: 'row',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  productCell: {
+    flex: 1,
+    fontSize: 11,
+    textAlign: 'center',
+    color: '#555',
+  },
+  noProductsText: {
+    fontSize: 12,
+    color: '#777',
+    textAlign: 'center',
+    marginTop: 6,
+  }
+});
 
 export default AdminOrderHistory;

@@ -10,6 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jwtDecode } from "jwt-decode";
 import AdminAssignedUsersPage from "./route_mgr/AdminAssignedUsers";
 import AdminHomePage from "./HomePage/AdminHomePage"; // Import AdminHomePage
+import AdminOrderHistory from "./Profile/AdminOrderHistory";
 
 const Tab = createBottomTabNavigator();
 
@@ -79,7 +80,7 @@ const TabNavigator = () => {
             {!isSuperAdmin && (
                 <Tab.Screen
                     name="Indent"
-                    component={isAdmin ? AdminAssignedUsersPage : IndentStack}
+                    component={isAdmin ? AdminOrderHistory : IndentStack}
                     options={{
                         tabBarIcon: ({ color, size }) => (
                             <MaterialCommunityIcons name="rss" size={size} color={color} />

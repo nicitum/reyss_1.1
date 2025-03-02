@@ -116,9 +116,9 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={styles.subMenuItem}
-                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("AdminOrderHistory"); }}
+                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("AdminAssignedUsersPage"); }}
                                 >
-                                    <Text style={styles.subMenuText}>Admin Order History</Text>
+                                    <Text style={styles.subMenuText}>Admin Orders</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={styles.subMenuItem}
