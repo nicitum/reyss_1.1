@@ -133,13 +133,9 @@ const PlaceOrderPage = ({ route }) => {
                                 return false;
                             }
 
-                            const productNameLower = product.name.trim().toLowerCase();
+                            const productCategoryLower = product.category.trim().toLowerCase();
 
-                            if (productNameLower.includes("butter milk")) {
-                                return true;
-                            }
-
-                            if (productNameLower.includes("ghee") || productNameLower.includes("butter")) {
+                            if (productCategoryLower.includes("Others")) {
                                 return false;
                             }
 

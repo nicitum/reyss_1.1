@@ -2,6 +2,7 @@ import React from "react";
 import { createStackNavigator } from "@react-navigation/stack";
 import HomePage from "./Home";
 import ProductsList from "./ProductList";
+import AdminHomePage from "./AdminHomePage";
 
 const Stack = createStackNavigator();
 
@@ -14,6 +15,7 @@ const HomeStack = () => {
     >
       <Stack.Screen name="HomePage" component={HomePage} />
       <Stack.Screen name="ProductsList" component={ProductsList} />
+      <Stack.Screen name="AdminHomePage" component={AdminHomePage} />
     </Stack.Navigator>
   );
 };

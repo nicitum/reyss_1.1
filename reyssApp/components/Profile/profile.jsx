@@ -141,6 +141,9 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                                 >
                                     <Text style={styles.subMenuText}>Collect Cash</Text>
                                 </TouchableOpacity>
+
+
+                                
                             </>
                         ) : (
                             // User Submenu
@@ -195,6 +198,13 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                             onPress={navigateToLoadingSlip}
                         >
                             <Text style={styles.subMenuText}>Loading Slip</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.subMenuItem}
+                            onPress={() => { navigateToAdminOrders(); navigation.navigate("CreditLimit"); }}
+                        >
+                            <Text style={styles.subMenuText}>CreditLimit</Text>
                         </TouchableOpacity>
                     </View>
                 )}

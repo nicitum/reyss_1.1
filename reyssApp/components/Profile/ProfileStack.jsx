@@ -10,6 +10,7 @@ import PlaceOrderAdmin from './PlaceOrderAdmin';
 import LoadingSlip from './LoadingSlip';
 import PaymentScreen from './Payments';
 import CollectCashPage from './CollectCash';
+import CreditLimitPage from './CreditLimit';
 
 const Stack = createStackNavigator();
 
@@ -76,6 +77,16 @@ const ProfileStack = () => {
         options={{ title: 'Collect Cash' }} 
         
       />
+
+
+      <Stack.Screen 
+        name="CreditLimit" 
+        component={CreditLimitPage} 
+        options={{ title: 'CreditLimit' }} 
+        
+      />
+
+
 
 
 

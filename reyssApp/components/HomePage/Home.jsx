@@ -9,13 +9,13 @@ import {
     Image,
     Alert,
     ScrollView,
+    ActivityIndicator // Import ActivityIndicator for loading state
 } from "react-native";
 import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 import { ipAddress } from "../../urls";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { checkTokenAndRedirect } from "../../services/auth";
 import { jwtDecode } from 'jwt-decode';
-// import { Toast } from 'react-native-toast-message/lib/typescript/Toast'; // Removed Toast import as per analysis
 
 // Helper function to format epoch time
 const formatDate = (epochTime) => {
@@ -28,16 +28,19 @@ const HomePage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [userDetails, setUserDetails] = useState(null);
     const [lastOrderDetails, setLastOrderDetails] = useState(null);
-    const [creditLimit, setCreditLimit] = useState(null); // State for credit limit
+    const [creditLimit, setCreditLimit] = useState(null);
+    const [pendingAmount, setPendingAmount] = useState('0'); // State for pending amount, initialize to '0'
+    const [isPendingAmountLoading, setIsPendingAmountLoading] = useState(false); // Loading state for pending amount
     const navigation = useNavigation();
 
-    // Function to check credit limit - moved inside HomePage component
+
+    // Function to check credit limit
     const checkCreditLimit = useCallback(async () => {
         try {
             const userAuthToken = await checkTokenAndRedirect(navigation);
             if (!userAuthToken) {
                 console.error("Authentication Error: Authorization token missing.");
-                return null; // Indicate error
+                return null;
             }
             const decodedToken = jwtDecode(userAuthToken);
             const customerId = decodedToken.id;
@@ -52,21 +55,60 @@ const HomePage = () => {
 
             if (creditLimitResponse.ok) {
                 const creditData = await creditLimitResponse.json();
-                return parseFloat(creditData.creditLimit); // Parse to float for comparison
+                return parseFloat(creditData.creditLimit);
             } else if (creditLimitResponse.status === 404) {
                 console.log("Credit limit not found for customer, proceeding without limit check.");
-                return Infinity; // Treat as no credit limit or very high limit, allow order (adjust logic if needed)
+                return Infinity;
             } else {
                 console.error("Error fetching credit limit:", creditLimitResponse.status, creditLimitResponse.statusText);
-                return null; // Indicate error
+                return null;
             }
 
         } catch (error) {
             console.error("Error checking credit limit:", error);
-            return null; // Indicate error
+            return null;
         }
     }, [navigation]);
 
+
+   // Function to fetch pending amount
+   const fetchPendingAmount = useCallback(async () => {
+
+    setIsPendingAmountLoading(true); // Start loading
+    try {
+        const userAuthToken = await checkTokenAndRedirect(navigation);
+        if (!userAuthToken) {
+            console.error("Authentication Error: Authorization token missing for pending amount.");
+            setIsPendingAmountLoading(false);
+            return;
+        }
+        const decodedToken = jwtDecode(userAuthToken);
+        const customerId = decodedToken.id;
+
+        // Corrected to use /collect_cash endpoint, POST method, and customerId as query parameter
+        const amountDueResponse = await fetch(`http://${ipAddress}:8090/collect_cash?customerId=${customerId}`, {
+            method: 'POST', // Using POST method
+            headers: {
+                'Content-Type': 'application/json', // Setting Content-Type header
+            },
+        });
+
+        if (amountDueResponse.ok) {
+            const amountDueData = await amountDueResponse.json();
+            // Extract amountDue from the response, it should be directly available as per the API code
+            setPendingAmount(amountDueData.amountDue !== undefined ? amountDueData.amountDue.toString() : '0');
+        } else {
+            console.error("Failed to fetch pending amount using /collect_cash:", amountDueResponse.status, amountDueResponse.statusText);
+            setPendingAmount('Error');
+        }
+
+    } catch (error) {
+        console.error("Error fetching pending amount using /collect_cash:", error);
+        setPendingAmount('Error');
+    } finally {
+        setIsPendingAmountLoading(false);
+    }
+}, [navigation]);
 
     // Back button handler
     const handleBackButton = useCallback(() => {
@@ -104,7 +146,6 @@ const HomePage = () => {
                 customerName: userGetResponse.user.name,
                 customerID: userGetResponse.user.customer_id,
                 route: userGetResponse.user.route,
-                pendingAmount: userGetResponse.pendingAmount,
             };
             await AsyncStorage.setItem("default", JSON.stringify(userGetResponse.defaultOrder));
 
@@ -113,12 +154,10 @@ const HomePage = () => {
             const totalAmount = latestOrder?.total_amount || 0;
             const orderType = latestOrder?.order_type || "";
             const quantity = latestOrder?.quantity || 0;
-            const pendingAmount = userGetResponse.pendingAmount;
 
             return {
                 userDetails,
                 latestOrder: { lastIndentDate, totalAmount, orderType, quantity },
-                pendingAmount,
             };
         } catch (err) {
             console.error("User details fetch error:", err);
@@ -135,11 +174,13 @@ const HomePage = () => {
             setUserDetails(userDetailsData.userDetails);
             setLastOrderDetails(userDetailsData.latestOrder);
         }
-        // Fetch credit limit here
+        // Fetch credit limit
         const creditLimitValue = await checkCreditLimit();
-        setCreditLimit(creditLimitValue); // Store in state
+        setCreditLimit(creditLimitValue);
+        // Fetch pending amount
+        await fetchPendingAmount(); // Fetch pending amount here as part of initial data load
         setIsLoading(false);
-    }, [userDetailsData1, checkCreditLimit]);
+    }, [userDetailsData1, checkCreditLimit, fetchPendingAmount]);
 
     useFocusEffect(
         useCallback(() => {
@@ -154,7 +195,7 @@ const HomePage = () => {
         }, [fetchData, handleBackButton])
     );
 
-    const { customerName, customerID, route, pendingAmount } = userDetails || {};
+    const { customerName, customerID, route} = userDetails || {};
     const { lastIndentDate, totalAmount, orderType, quantity } = lastOrderDetails || {};
 
     return (
@@ -164,90 +205,104 @@ const HomePage = () => {
                 <Text style={styles.headerText}> </Text>
             </View>
 
-            {/* Logo Section */}
-            <View style={styles.section}>
-                <Image source={require("../../assets/SL.png")} style={styles.logo} />
-                <View style={styles.companyInfo}>
-                    <Text style={styles.companyName}>SL Enterprises</Text>
-                    <Text style={styles.proprietorName}>Proprietor Lokesh Naidu</Text>
+            {isLoading && (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#FDDA0D" />
                 </View>
-            </View>
+            )}
 
-            {/* Customer Details Card */}
-            <View style={styles.card}>
-                <Text style={styles.cardTitle}>Customer Details</Text>
-                <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Name:</Text>
-                    <Text style={styles.detailValue}>{customerName || "N/A"}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>ID:</Text>
-                    <Text style={styles.detailValue}>{customerID || "N/A"}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Route:</Text>
-                    <Text style={styles.detailValue}>{route || "N/A"}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Credit Limit:</Text>
-                    <Text style={styles.detailValue}>{creditLimit !== null ? (creditLimit === Infinity ? "N/A (No Limit)" : `₹ ${creditLimit}`) : "Fetching..."}</Text>
-                </View>
-                <TouchableOpacity style={styles.callButton}>
-                    <MaterialIcons name="call" size={22} color="#333" />
-                    <Text style={styles.callText}>Call Us</Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* Amount Pending Card */}
-            <View style={[styles.card, styles.amountPendingCard, parseInt(pendingAmount) > 5000 && styles.highPendingAmount]}>
-                <Text style={styles.cardTitle}>Amount Pending</Text>
-                <View style={styles.amountRow}>
-                    <Text style={styles.amountText}>₹ {pendingAmount || "0"}</Text>
-                    <TouchableOpacity style={styles.payButton}>
-                        <Text style={styles.payButtonText}>Pay Now</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            {/* Last Order Details Card */}
-            <View style={styles.card}>
-                <Text style={styles.cardTitle}>Last Order</Text>
-                {lastOrderDetails && lastOrderDetails.lastIndentDate ? (
-                    <View>
-                        <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>Order Type:</Text>
-                            <Text style={styles.detailValue}>{orderType || "N/A"}</Text>
-                        </View>
-                        <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>Quantity:</Text>
-                            <Text style={styles.detailValue}>{quantity || "N/A"}</Text>
-                        </View>
-                        <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>Date:</Text>
-                            <Text style={styles.detailValue}>{formatDate(lastIndentDate)}</Text>
-                        </View>
-                        <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>Amount:</Text>
-                            <Text style={styles.detailValue}>₹ {totalAmount || "0"}</Text>
+            {!isLoading && (
+                <>
+                    {/* Logo Section */}
+                    <View style={styles.section}>
+                        <Image source={require("../../assets/SL.png")} style={styles.logo} />
+                        <View style={styles.companyInfo}>
+                            <Text style={styles.companyName}>SL Enterprises</Text>
+                            <Text style={styles.proprietorName}>Proprietor Lokesh Naidu</Text>
                         </View>
                     </View>
-                ) : (
-                    <Text style={styles.noOrdersText}>No Orders Placed Yet</Text>
-                )}
-            </View>
 
-            {/* View Products Button */}
-            <TouchableOpacity
-                style={styles.productsButton}
-                onPress={() => navigation.navigate("ProductsList")}
-            >
-                <Text style={styles.productsButtonText}>View All Products</Text>
-                <MaterialIcons
-                    name="keyboard-arrow-right"
-                    size={24}
-                    color="#333"
-                />
-            </TouchableOpacity>
+                    {/* Customer Details Card */}
+                    <View style={styles.card}>
+                        <Text style={styles.cardTitle}>Customer Details</Text>
+                        <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Name:</Text>
+                            <Text style={styles.detailValue}>{customerName || "N/A"}</Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>ID:</Text>
+                            <Text style={styles.detailValue}>{customerID || "N/A"}</Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Route:</Text>
+                            <Text style={styles.detailValue}>{route || "N/A"}</Text>
+                        </View>
+                        <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>Credit Limit:</Text>
+                            <Text style={styles.detailValue}>{creditLimit !== null ? (creditLimit === Infinity ? "N/A (No Limit)" : `₹ ${creditLimit}`) : "Fetching..."}</Text>
+                        </View>
+                        <TouchableOpacity style={styles.callButton}>
+                            <MaterialIcons name="call" size={22} color="#333" />
+                            <Text style={styles.callText}>Call Us</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Amount Pending Card */}
+                    <View style={[styles.card, styles.amountPendingCard, parseFloat(pendingAmount) > 5000 && styles.highPendingAmount]}>
+                        <Text style={styles.cardTitle}>Amount Pending</Text>
+                        <View style={styles.amountRow}>
+                            {isPendingAmountLoading ? (
+                                <ActivityIndicator size="small" color="#e65100" /> // Loading indicator inside Amount Pending card
+                            ) : (
+                                <Text style={styles.amountText}>₹ {pendingAmount === 'Error' ? 'Error' : pendingAmount}</Text>
+                            )}
+                            <TouchableOpacity style={styles.payButton}>
+                                <Text style={styles.payButtonText}>Pay Now</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* Last Order Details Card */}
+                    <View style={styles.card}>
+                        <Text style={styles.cardTitle}>Last Order</Text>
+                        {lastOrderDetails && lastOrderDetails.lastIndentDate ? (
+                            <View>
+                                <View style={styles.detailRow}>
+                                    <Text style={styles.detailLabel}>Order Type:</Text>
+                                    <Text style={styles.detailValue}>{orderType || "N/A"}</Text>
+                                </View>
+                                <View style={styles.detailRow}>
+                                    <Text style={styles.detailLabel}>Quantity:</Text>
+                                    <Text style={styles.detailValue}>{quantity || "N/A"}</Text>
+                                </View>
+                                <View style={styles.detailRow}>
+                                    <Text style={styles.detailLabel}>Date:</Text>
+                                    <Text style={styles.detailValue}>{formatDate(lastIndentDate)}</Text>
+                                </View>
+                                <View style={styles.detailRow}>
+                                    <Text style={styles.detailLabel}>Amount:</Text>
+                                    <Text style={styles.detailValue}>₹ {totalAmount || "0"}</Text>
+                                </View>
+                            </View>
+                        ) : (
+                            <Text style={styles.noOrdersText}>No Orders Placed Yet</Text>
+                        )}
+                    </View>
+
+                    {/* View Products Button */}
+                    <TouchableOpacity
+                        style={styles.productsButton}
+                        onPress={() => navigation.navigate("ProductsList")}
+                    >
+                        <Text style={styles.productsButtonText}>View All Products</Text>
+                        <MaterialIcons
+                            name="keyboard-arrow-right"
+                            size={24}
+                            color="#333"
+                        />
+                    </TouchableOpacity>
+                </>
+            )}
         </ScrollView>
     );
 };
@@ -255,11 +310,11 @@ const HomePage = () => {
 const styles = StyleSheet.create({
     container: {
         flexGrow: 1,
-        backgroundColor: "#ffffff", // White background as requested
+        backgroundColor: "#ffffff",
         paddingBottom: 20,
     },
     header: {
-        backgroundColor: "#ffff", // Yellow header background
+        backgroundColor: "#ffff",
         paddingVertical: 20,
         paddingHorizontal: 20,
         borderBottomLeftRadius: 15,
@@ -269,7 +324,7 @@ const styles = StyleSheet.create({
     headerText: {
         fontSize: 12,
         fontWeight: "bold",
-        color: "#333", // Dark text for contrast on yellow
+        color: "#333",
         textAlign: 'center',
     },
     section: {
@@ -341,7 +396,7 @@ const styles = StyleSheet.create({
         textAlign: 'right',
     },
     callButton: {
-        backgroundColor: "#ffffff", // White button with yellow border for 'Call Us'
+        backgroundColor: "#ffffff",
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
@@ -356,14 +411,14 @@ const styles = StyleSheet.create({
     callText: {
         marginLeft: 8,
         fontSize: 16,
-        color: "#333", // Dark text for 'Call Us' button
+        color: "#333",
         fontWeight: "bold",
     },
     amountPendingCard: {
-        backgroundColor: '#ffffff', // White for amount pending card
+        backgroundColor: '#ffffff',
     },
     highPendingAmount: {
-        backgroundColor: '#ffe0b2', // Light orange for high pending amount - softer than red
+        backgroundColor: '#ffe0b2',
     },
     amountRow: {
         flexDirection: "row",
@@ -373,16 +428,16 @@ const styles = StyleSheet.create({
     amountText: {
         fontSize: 22,
         fontWeight: "bold",
-        color: "#e65100", // Dark orange for pending amount - to stand out but not harsh red
+        color: "#e65100",
     },
     payButton: {
-        backgroundColor: "#FDDA0D", // Yellow Pay Now button
+        backgroundColor: "#FDDA0D",
         paddingVertical: 10,
         paddingHorizontal: 20,
         borderRadius: 8,
     },
     payButtonText: {
-        color: "#333", // Dark text for 'Pay Now' button
+        color: "#333",
         fontSize: 16,
         fontWeight: "bold",
     },
@@ -394,7 +449,7 @@ const styles = StyleSheet.create({
         paddingVertical: 15,
     },
     productsButton: {
-        backgroundColor: "#FDDA0D", // Yellow View Products button
+        backgroundColor: "#FDDA0D",
         flexDirection: "row",
         justifyContent: "center",
         alignItems: "center",
@@ -408,10 +463,20 @@ const styles = StyleSheet.create({
         elevation: 3,
     },
     productsButtonText: {
-        color: "#333", // Dark text for 'View Products'
+        color: "#333",
         fontSize: 18,
         fontWeight: "bold",
         marginRight: 10,
+    },
+    loadingContainer: { // Style for loading indicator overlay
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.7)', // Semi-transparent white background
     },
 });
 

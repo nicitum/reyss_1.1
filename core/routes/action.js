@@ -544,9 +544,7 @@ router.post("/on-behalf", async (req, res) => {
         SELECT ?, product_id, quantity, price, name, category
         FROM order_products
         WHERE order_id = ?
-        AND LOWER(name) NOT LIKE '%ghee%' 
-        AND LOWER(name) NOT LIKE '%butter%' 
-        OR LOWER(name) LIKE '%butter milk%'  -- Allow "butter milk"
+        AND LOWER(category) NOT LIKE '%Others%'
         `;
         const orderProductsValues = [newOrderId, reference_order_id];
         await executeQuery(insertOrderProductsQuery, orderProductsValues);
@@ -715,6 +713,152 @@ router.post('/credit-limit/update-amount-due-on-order', async (req, res) => {
     } catch (error) {
         console.error("Error updating credit_limit.amount_due in /credit-limit/update-amount-due-on-order:", error);
         res.status(500).json({ success: false, message: "Failed to update credit limit amount_due." });
+    }
+});
+
+
+router.post('/collect_cash', async (req, res) => {
+    try {
+        let customerId = req.query.customerId; 
+        if (!customerId) {
+            customerId = req.body.customerId; // Fallback to body if not in query
+        } 
+        const { cash } = req.body;        // Get cash from request body (optional)
+
+        // 1. Validate customerId
+        if (!customerId) {
+            return res.status(400).json({ message: "Customer ID is required as a query parameter" });
+        }
+
+        // 2. Fetch Current Customer Data
+        const fetchQuery = 'SELECT amount_due, amount_paid, credit_limit FROM credit_limit WHERE customer_id = ?';
+        const fetchValues = [customerId];
+        const customerDataResult = await executeQuery(fetchQuery, fetchValues); // Assuming executeQuery function exists
+
+        if (customerDataResult.length === 0) {
+            return res.status(404).json({ message: "Customer not found" });
+        }
+
+        const currentCustomerData = customerDataResult[0];
+        let amountDue = currentCustomerData.amount_due; // Default amount_due to return if no cash
+
+        // 3. Handle cash Input (Optional)
+        if (cash !== undefined && cash !== null) { // Check if cash is provided (not undefined and not null)
+            const currentAmountPaid = currentCustomerData.amount_paid || 0; // Default to 0 if null
+            const currentCreditLimit = currentCustomerData.credit_limit || 0; // Default to 0 if null
+
+            const parsedCash = parseFloat(cash); // Parse cash to a number (important!)
+            if (isNaN(parsedCash) || parsedCash < 0) {
+                return res.status(400).json({ message: "Invalid cash amount provided. Cash must be a non-negative number." });
+            }
+
+            const newAmountPaid = currentAmountPaid + parsedCash;
+            const newAmountDue = Math.max(0, amountDue - parsedCash); // Ensure amount_due doesn't go below 0
+            const newCreditLimit = currentCreditLimit + parsedCash;
+
+            // 4. Database Update (when cash is provided)
+            const updateQuery = `
+                UPDATE credit_limit
+                SET amount_paid = ?, amount_due = ?, credit_limit = ?
+                WHERE customer_id = ?
+            `;
+            const updateValues = [newAmountPaid, newAmountDue, newCreditLimit, customerId];
+            await executeQuery(updateQuery, updateValues);
+
+            return res.status(200).json({
+                message: "Cash collected and customer data updated successfully",
+                updatedAmountPaid: newAmountPaid,
+                updatedAmountDue: newAmountDue,
+                updatedCreditLimit: newCreditLimit
+            });
+
+        } else {
+            // Cash is not provided, only return amount_due
+            return res.status(200).json({ amountDue: amountDue });
+        }
+
+    } catch (error) {
+        console.error("Error processing cash collection:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+
+// New API endpoint to get total amount due across all customers
+router.get('/admin/total-amount-due', async (req, res) => {
+    try {
+        // 1. SQL query to sum amount_due from credit_limit table
+        const getTotalAmountDueQuery = 'SELECT SUM(amount_due) AS totalAmountDue FROM credit_limit';
+
+        // 2. Execute the query
+        const totalAmountDueResult = await executeQuery(getTotalAmountDueQuery);
+
+        // 3. Extract totalAmountDue from the result
+        let totalAmountDue = 0;
+        if (totalAmountDueResult.length > 0 && totalAmountDueResult[0].totalAmountDue !== null) {
+            totalAmountDue = parseFloat(totalAmountDueResult[0].totalAmountDue);
+        }
+
+        // 4. Respond with the total amount due
+        res.status(200).json({ success: true, totalAmountDue: totalAmountDue });
+
+    } catch (error) {
+        console.error("Error fetching total amount due in /admin/total-amount-due:", error);
+        res.status(500).json({ success: false, message: "Failed to fetch total amount due." });
+    }
+});
+
+
+
+
+router.get('/fetch_credit_data', async (req, res) => {
+    try {
+        const query = 'SELECT * FROM credit_limit'; // Query to select all columns and rows
+        const result = await executeQuery(query);
+
+        if (result.length > 0) {
+            // Data found in the credit_limit table
+            return res.status(200).json({ creditData: result });
+        } else {
+            // No data found in the credit_limit table (table might be empty)
+            return res.status(200).json({ creditData: [], message: "No credit limit data found in the table." });
+            // Or, if you want to indicate "no data" as a 404 Not Found (less common for fetching all data, empty result is usually valid):
+            // return res.status(404).json({ message: "No credit limit data found in the table." });
+        }
+
+    } catch (error) {
+        console.error("Error fetching all credit limit data:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message }); // Include error details for debugging
+    }
+});
+
+
+router.put('/update_credit_limit', async (req, res) => {
+    try {
+        const { customerId, creditLimit } = req.body; // Expecting customerId and creditLimit in the request body
+
+        // Validate input
+        if (!customerId) {
+            return res.status(400).json({ message: "Customer ID is required in the request body" });
+        }
+        if (creditLimit === undefined || creditLimit === null || isNaN(Number(creditLimit))) {
+            return res.status(400).json({ message: "Valid credit limit is required in the request body" });
+        }
+
+        const query = 'UPDATE credit_limit SET credit_limit = ? WHERE customer_id = ?';
+        const values = [creditLimit, customerId];
+
+        const result = await executeQuery(query, values);
+
+        if (result.affectedRows > 0) {
+            return res.status(200).json({ message: "Credit limit updated successfully" });
+        } else {
+            return res.status(404).json({ message: "Customer ID not found or credit limit update failed" });
+        }
+
+    } catch (error) {
+        console.error("Error updating credit limit:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message });
     }
 });
 
