@@ -117,47 +117,7 @@ const LoadingSlipPage = () => {
     }, []);
 
 
-    const fetchOrderProducts = async (orderIdToFetch, routeName) => {
-        setLoading(true);
-        setError(null);
-        setIsOrderUpdated(false);
-        try {
-            const token = await AsyncStorage.getItem("userAuthToken");
-            const url = `http://${ipAddress}:8090/order-products?orderId=${orderIdToFetch}`;
-            const headers = {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json",
-            };
-            const productsResponse = await fetch(url, { headers });
-
-            if (!productsResponse.ok) {
-                const errorText = await productsResponse.text();
-                const message = `Failed to fetch order products. Status: ${productsResponse.status}, Text: ${errorText}`;
-                console.error("FETCH ORDER PRODUCTS - Error Response Text:", errorText);
-                if (productsResponse.status !== 404) {
-                    throw new Error(message);
-                } else {
-                    console.log("FETCH ORDER PRODUCTS - No products found for this order, initializing empty product list.");
-                    setProducts([]);
-                    setSelectedOrderId(orderIdToFetch);
-                    return;
-                }
-            }
-
-            const productsData = await productsResponse.json();
-            setProducts(productsData);
-            setSelectedOrderId(orderIdToFetch);
-
-
-        } catch (error) {
-            console.error("FETCH ORDER PRODUCTS - Fetch Error:", error);
-            setError(error.message || "Failed to fetch order products.");
-            setProducts([]);
-            setSelectedOrderId(null);
-        } finally {
-            setLoading(false);
-        }
-    };
+  
 
     const save = async (uri, filename, mimetype, reportType) => {
         if (Platform.OS === "android") {
@@ -205,36 +165,51 @@ const LoadingSlipPage = () => {
     };
 
 
-    const generateExcelReport = async (productsData, reportType, routeName = '') => { // RouteName added here
+    const generateExcelReport = async (productsData, reportType, routeName = '') => {
         if (!productsData || productsData.length === 0) {
             Alert.alert("No Products", "No products to include in the loading slip.");
             return;
         }
-
+    
         setLoading(true);
         try {
             const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.aoa_to_sheet([
-                [`${reportType}`],
-                [`Route: ${routeName}`], // Display Route in header
+    
+            // Calculate totals
+            let totalQuantity = 0; // Total for 'Quantity in base units (eaches)' if needed
+            let totalBaseUnitQuantity = 0;
+            let totalCrates = 0;
+    
+            productsData.forEach(product => {
+                totalQuantity += product.quantity; // Summing 'eaches' quantity - optional
+                totalBaseUnitQuantity += parseFloat(product.baseUnitQuantity);
+                totalCrates += product.crates;
+            });
+    
+            const wsData = [
+                [`${reportType} - Route ${routeName}`],
                 [],
-                ["Products", "Quantity in base units (eaches)", "Quantity in base units (kgs.lts)", "Crates"], // Updated headers
+                ["Products", "Quantity in base units (eaches)", "Quantity in base units (kgs/lts)", "Crates"],
                 ...productsData.map(product => [
                     product.name,
-                    product.quantity, // Quantity in base units (eaches) - renamed
-                    "", // Quantity in base units (kgs.lts) - empty
-                    "", // Crates - empty
+                    product.quantity,
+                    product.baseUnitQuantity,
+                    product.crates
                 ]),
-            ]);
+                ["Totals",  totalQuantity.toFixed(2), totalBaseUnitQuantity.toFixed(2), totalCrates] // Totals row
+            ];
+    
+    
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
             XLSX.utils.book_append_sheet(wb, ws, `${reportType} Data`);
-
+    
             const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
             const base64Workbook = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
-
-            const filename = `${reportType.replace(/\s/g, '')}.xlsx`;
+    
+            const filename = `${reportType.replace(/\s/g, '')}-Route-${routeName}.xlsx`;
             const mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-
+    
+    
             if (Platform.OS === 'web') {
                 const blob = new Blob([wbout], { type: mimetype });
                 const url = URL.createObjectURL(blob);
@@ -251,12 +226,12 @@ const LoadingSlipPage = () => {
             } else {
                 const fileDir = FileSystem.documentDirectory;
                 const fileUri = fileDir + filename;
-
+    
                 await FileSystem.writeAsStringAsync(fileUri, base64Workbook, {
                     encoding: FileSystem.EncodingType.Base64
                 });
-
-
+    
+    
                 if (Platform.OS === 'android') {
                     save(fileUri, filename, mimetype, reportType);
                 } else {
@@ -280,8 +255,8 @@ const LoadingSlipPage = () => {
                     }
                 }
             }
-
-
+    
+    
         } catch (e) {
             console.error("Excel Generation Error:", e);
             if (Platform.OS === 'android') {
@@ -295,16 +270,16 @@ const LoadingSlipPage = () => {
         }
     };
 
-    const generateDeliveryExcelReport = async () => {
+    const generateDeliveryExcelReport = async (usersForRoute, routeName) => { // Added usersForRoute and routeName
         const reportType = 'Delivery Slip';
         setLoading(true);
         try {
             const wb = XLSX.utils.book_new();
-            const deliverySlipData = await createDeliverySlipDataForExcel();
-            const routeNameForDeliverySlip = adminUsersWithOrdersToday.length > 0 ? adminUsersWithOrdersToday[0].route : 'N/A'; // Get route from first user, or N/A if no users.
+            const deliverySlipData = await createDeliverySlipDataForExcelForRoute(usersForRoute); //Pass usersForRoute
             const ws = XLSX.utils.aoa_to_sheet([
-                deliverySlipData[0], // Delivery Slip title
-                [`Route: ${routeNameForDeliverySlip}`], // Route in Delivery Slip Header
+                [`${reportType}`]
+                [`Route: ${routeName}`], // Slip Title now includes Route
+                //[`Route: ${routeName}`], // No separate Route line needed as Route is in title
                 [],
                 deliverySlipData[2], // Headers (Items, Customer Names)
                 ...deliverySlipData.slice(3) // Product rows
@@ -314,7 +289,7 @@ const LoadingSlipPage = () => {
             const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
             const base64Workbook = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
 
-            const filename = `${reportType.replace(/\s/g, '')}.xlsx`;
+            const filename = `${reportType.replace(/\s/g, '')}-Route-${routeName}.xlsx`; // Filename now includes Route
             const mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
             if (Platform.OS === 'web') {
@@ -377,12 +352,12 @@ const LoadingSlipPage = () => {
         }
     };
 
-    const createDeliverySlipDataForExcel = async () => {
+    const createDeliverySlipDataForExcelForRoute = async (usersForRoute) => { // Modified to accept usersForRoute
         const orderMap = new Map();
         const allProducts = new Set();
         const customerNames = [];
 
-        adminUsersWithOrdersToday.forEach(user => {
+        usersForRoute.forEach(user => { // Use usersForRoute
             const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
             if (order) {
                 customerNames.push(user.name);
@@ -416,7 +391,7 @@ const LoadingSlipPage = () => {
             const productRow = [productName];
             customerNames.forEach(customerName => {
                 let quantity = 0;
-                const customerOrder = orderMap.get(adminUsersWithOrdersToday.find(u => u.name === customerName)?.cust_id);
+                const customerOrder = orderMap.get(usersForRoute.find(u => u.name === customerName)?.cust_id); // Use usersForRoute
                 if (customerOrder && customerOrder.products) {
                     const productInOrder = customerOrder.products.find(p => p.name === productName);
                     quantity = productInOrder ? productInOrder.quantity : 0;
@@ -428,16 +403,12 @@ const LoadingSlipPage = () => {
         return excelData;
     };
 
-    const createLoadingSlipDataForExcel = async () => {
+    const createLoadingSlipDataForExcelForRoute = async (usersForRoute) => {
         const consolidatedProducts = new Map();
-        let routeNameForLoadingSlip = 'N/A'; // Default route name
-
-        for (const user of adminUsersWithOrdersToday) {
+    
+        for (const user of usersForRoute) {
             const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
             if (order) {
-                if (routeNameForLoadingSlip === 'N/A' && user.route) { //Set route from first user with route.
-                    routeNameForLoadingSlip = user.route;
-                }
                 try {
                     const token = await AsyncStorage.getItem("userAuthToken");
                     const url = `http://${ipAddress}:8090/order-products?orderId=${order.id}`;
@@ -449,16 +420,72 @@ const LoadingSlipPage = () => {
                     }
                     const productsData = await productsResponse.json();
                     productsData.forEach(product => {
+                        console.log("--- Processing Product: ---");
+                        console.log("Product Name:", product.name);
+    
+                        let quantityValue = 0;
+                        let unit = '';
+                        const nameParts = product.name.split(" ");
+                        console.log("nameParts:", nameParts);
+                        const lastPart = nameParts[nameParts.length - 1];
+                        const secondLastPart = nameParts[nameParts.length - 2];
+                        console.log("lastPart:", lastPart);
+                        console.log("secondLastPart:", secondLastPart);
+    
+                        const lowerLastPart = lastPart.toLowerCase();
+                        const lowerSecondLastPart = secondLastPart ? secondLastPart.toLowerCase() : '';
+                        console.log("lowerLastPart:", lowerLastPart);
+                        console.log("lowerSecondLastPart:", lowerSecondLastPart);
+    
+                        if (lowerLastPart.includes('kg') || lowerLastPart.includes('kgs')) {
+                            quantityValue = parseFloat(nameParts[nameParts.length - 2] === '1' ? '1' : nameParts[nameParts.length - 2]);
+                            unit = 'kg';
+                        } else if (lowerLastPart.includes('ltr') || lowerLastPart.includes('liter')) {
+                            quantityValue = parseFloat(nameParts[nameParts.length - 2] === '1' ? '1' : nameParts[nameParts.length - 2]);
+                            unit = 'ltr';
+                        } else if (lowerLastPart.includes('gm') || lowerLastPart.includes('gms') || lowerLastPart.includes('g')) {
+                            quantityValue = parseFloat(nameParts[nameParts.length - 2]);
+                            unit = 'gm';
+                        }  else if (lowerLastPart.includes('ml')) {
+                            quantityValue = parseFloat(nameParts[nameParts.length - 2]);
+                            unit = 'ml';
+                        } else if (lowerLastPart === 'gms' && lowerSecondLastPart === '1000') {
+                            quantityValue = 1;
+                            unit = 'kg';
+                        }
+                        console.log("quantityValue (parsed):", quantityValue);
+                        console.log("unit (detected):", unit);
+    
+                        let baseUnitQuantity = 0;
+                        if (unit === 'ml') {
+                            baseUnitQuantity = (quantityValue * product.quantity) / 1000;
+                        } else if (unit === 'gm') {
+                            baseUnitQuantity = (quantityValue * product.quantity) / 1000;
+                        } else if (unit === 'ltr' || unit === 'liter' || unit === 'kg' || unit === 'kgs') {
+                            baseUnitQuantity = quantityValue * product.quantity;
+                        } else {
+                            baseUnitQuantity = product.quantity;
+                        }
+                        console.log("baseUnitQuantity:", baseUnitQuantity);
+    
+                        const crates = Math.floor(baseUnitQuantity / 12);
+                        console.log("crates:", crates);
+    
+    
                         const currentProductInfo = consolidatedProducts.get(product.name);
                         if (currentProductInfo) {
                             consolidatedProducts.set(product.name, {
                                 totalQuantity: currentProductInfo.totalQuantity + product.quantity,
-                                category: currentProductInfo.category
+                                category: currentProductInfo.category,
+                                totalBaseUnitQuantity: currentProductInfo.totalBaseUnitQuantity + baseUnitQuantity,
+                                totalCrates: currentProductInfo.totalCrates + crates,
                             });
                         } else {
                             consolidatedProducts.set(product.name, {
                                 totalQuantity: product.quantity,
-                                category: product.category || 'Unknown'
+                                category: product.category || 'Unknown',
+                                totalBaseUnitQuantity: baseUnitQuantity,
+                                totalCrates: crates,
                             });
                         }
                     });
@@ -467,12 +494,31 @@ const LoadingSlipPage = () => {
                 }
             }
         }
-
         const productListForExcel = [];
         for (const [productName, productInfo] of consolidatedProducts.entries()) {
-            productListForExcel.push({ name: productName, quantity: productInfo.totalQuantity, category: productInfo.category });
+            productListForExcel.push({
+                name: productName,
+                quantity: productInfo.totalQuantity,
+                category: productInfo.category,
+                baseUnitQuantity: productInfo.totalBaseUnitQuantity.toFixed(2),
+                crates: productInfo.totalCrates
+            });
         }
         return productListForExcel;
+    };
+
+
+    // New function to group users by route
+    const groupUsersByRoute = (usersWithOrders) => {
+        const routesMap = new Map();
+        usersWithOrders.forEach(user => {
+            const route = user.route || 'Unrouted'; // Handle users without route?
+            if (!routesMap.has(route)) {
+                routesMap.set(route, []);
+            }
+            routesMap.get(route).push(user);
+        });
+        return routesMap; // Returns Map: { route1: [users], route2: [users], ... }
     };
 
 
@@ -531,11 +577,14 @@ const LoadingSlipPage = () => {
                         }}
                         onPress={async () => {
                             if (adminUsersWithOrdersToday.length > 0 ) {
-                                const loadingSlipData = await createLoadingSlipDataForExcel();
-                                const routeNameForLoadingSlipHeader = adminUsersWithOrdersToday.length > 0 ? adminUsersWithOrdersToday[0].route : 'N/A'; //Route for Loading slip
-                                generateExcelReport(loadingSlipData, 'Loading Slip', routeNameForLoadingSlipHeader); // Pass route name here
+                                const routesMap = groupUsersByRoute(adminUsersWithOrdersToday); // Group users by route
+                                for (const [routeName, usersForRoute] of routesMap.entries()) { // Iterate through routes
+                                    const loadingSlipDataForRoute = await createLoadingSlipDataForExcelForRoute(usersForRoute, routeName); // Get data for each route
+                                    generateExcelReport(loadingSlipDataForRoute, 'Loading Slip', routeName); // Generate report for each route
+                                }
+                                Alert.alert("Slips Generated", "Loading Slips generated for each route.");
                             } else {
-                                Alert.alert("No Orders", "No orders available to generate loading slip for the current filter.");
+                                Alert.alert("No Orders", "No orders available to generate loading slips for the current filter.");
                             }
                         }}
                     >
@@ -550,9 +599,14 @@ const LoadingSlipPage = () => {
                         }}
                         onPress={async () => {
                             if (adminUsersWithOrdersToday.length > 0 ) {
-                                generateDeliveryExcelReport();
+                                const routesMap = groupUsersByRoute(adminUsersWithOrdersToday); // Group users by route
+                                for (const [routeName, usersForRoute] of routesMap.entries()) { // Iterate through routes
+                                    generateDeliveryExcelReport(usersForRoute, routeName); // Generate Delivery Slip for each route - pass usersForRoute and routeName
+                                }
+                                Alert.alert("Slips Generated", "Delivery Slips generated for each route.");
+
                             } else {
-                                Alert.alert("No Orders", "No orders available to generate delivery slip for the current filter.");
+                                Alert.alert("No Orders", "No orders available to generate delivery slips for the current filter.");
                             }
                         }}
                     >
