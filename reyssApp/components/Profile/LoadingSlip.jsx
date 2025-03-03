@@ -23,6 +23,7 @@ import * as XLSX from 'xlsx';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
+
 const LOADING_SLIP_DIR_URI_KEY = 'loadingSlipDirectoryUri';
 
 const LoadingSlipPage = () => {
@@ -204,7 +205,7 @@ const LoadingSlipPage = () => {
     };
 
 
-    const generateExcelReport = async (productsData, reportType, routeName = 'Consolidated Routes') => {
+    const generateExcelReport = async (productsData, reportType, routeName = '') => { // RouteName added here
         if (!productsData || productsData.length === 0) {
             Alert.alert("No Products", "No products to include in the loading slip.");
             return;
@@ -215,14 +216,14 @@ const LoadingSlipPage = () => {
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.aoa_to_sheet([
                 [`${reportType}`],
-                [`Route: ${routeName}`],
+                [`Route: ${routeName}`], // Display Route in header
                 [],
-                ["Products", "Category", "Quantity", "Crates"],
+                ["Products", "Quantity in base units (eaches)", "Quantity in base units (kgs.lts)", "Crates"], // Updated headers
                 ...productsData.map(product => [
                     product.name,
-                    product.category,
-                    product.quantity,
-                    "",
+                    product.quantity, // Quantity in base units (eaches) - renamed
+                    "", // Quantity in base units (kgs.lts) - empty
+                    "", // Crates - empty
                 ]),
             ]);
             XLSX.utils.book_append_sheet(wb, ws, `${reportType} Data`);
@@ -265,7 +266,7 @@ const LoadingSlipPage = () => {
                             dialogTitle: `${reportType} Report`,
                             UTI: 'com.microsoft.excel.xlsx'
                         });
-                         if (Platform.OS !== 'android') {
+                        if (Platform.OS !== 'android') {
                             Alert.alert('Success', `${reportType} Generated and Shared Successfully!`);
                         }
                     } catch (shareError) {
@@ -299,7 +300,15 @@ const LoadingSlipPage = () => {
         setLoading(true);
         try {
             const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.aoa_to_sheet(await createDeliverySlipDataForExcel());
+            const deliverySlipData = await createDeliverySlipDataForExcel();
+            const routeNameForDeliverySlip = adminUsersWithOrdersToday.length > 0 ? adminUsersWithOrdersToday[0].route : 'N/A'; // Get route from first user, or N/A if no users.
+            const ws = XLSX.utils.aoa_to_sheet([
+                deliverySlipData[0], // Delivery Slip title
+                [`Route: ${routeNameForDeliverySlip}`], // Route in Delivery Slip Header
+                [],
+                deliverySlipData[2], // Headers (Items, Customer Names)
+                ...deliverySlipData.slice(3) // Product rows
+            ]);
             XLSX.utils.book_append_sheet(wb, ws, `${reportType}`);
 
             const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
@@ -377,7 +386,7 @@ const LoadingSlipPage = () => {
             const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
             if (order) {
                 customerNames.push(user.name);
-                orderMap.set(user.cust_id, { name: user.name, orderId: order.id, products: [] });
+                orderMap.set(user.cust_id, { name: user.name, orderId: order.id, products: [], route: user.route }); // Include route here
             }
         });
 
@@ -421,10 +430,14 @@ const LoadingSlipPage = () => {
 
     const createLoadingSlipDataForExcel = async () => {
         const consolidatedProducts = new Map();
+        let routeNameForLoadingSlip = 'N/A'; // Default route name
 
         for (const user of adminUsersWithOrdersToday) {
             const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
             if (order) {
+                if (routeNameForLoadingSlip === 'N/A' && user.route) { //Set route from first user with route.
+                    routeNameForLoadingSlip = user.route;
+                }
                 try {
                     const token = await AsyncStorage.getItem("userAuthToken");
                     const url = `http://${ipAddress}:8090/order-products?orderId=${order.id}`;
@@ -519,7 +532,8 @@ const LoadingSlipPage = () => {
                         onPress={async () => {
                             if (adminUsersWithOrdersToday.length > 0 ) {
                                 const loadingSlipData = await createLoadingSlipDataForExcel();
-                                generateExcelReport(loadingSlipData, 'Loading Slip');
+                                const routeNameForLoadingSlipHeader = adminUsersWithOrdersToday.length > 0 ? adminUsersWithOrdersToday[0].route : 'N/A'; //Route for Loading slip
+                                generateExcelReport(loadingSlipData, 'Loading Slip', routeNameForLoadingSlipHeader); // Pass route name here
                             } else {
                                 Alert.alert("No Orders", "No orders available to generate loading slip for the current filter.");
                             }
@@ -566,7 +580,7 @@ const LoadingSlipPage = () => {
 
     return (
         <View style={styles.container}>
-            
+
 
             <View style={styles.filterContainer}>
                 <Text style={styles.filterLabel}>Filter Order Type:</Text>

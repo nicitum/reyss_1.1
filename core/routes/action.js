@@ -78,7 +78,7 @@ router.get("/get-orders/:customer_id", async (req, res) => {
             return res.status(400).json({ status: false, message: "Customer ID is required" });
         }
 
-        const fetchQuery = "SELECT id,total_amount,customer_id,delivery_status,approve_status,cancelled,placed_on FROM orders WHERE customer_id = ? ORDER BY id DESC";
+        const fetchQuery = "SELECT id,total_amount,customer_id,delivery_status,approve_status,cancelled,placed_on,loading_slip FROM orders WHERE customer_id = ? ORDER BY id DESC";
         const fetchResult = await executeQuery(fetchQuery, [customer_id]);
 
         if (fetchResult.length > 0) {

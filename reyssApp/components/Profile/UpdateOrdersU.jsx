@@ -174,23 +174,49 @@ const UpdateOrdersU = () => {
 
     const handleDeleteProductItem = async (indexToDelete) => {
         if (isOrderUpdated) return;
-
+    
         const productToDelete = products[indexToDelete];
         if (!productToDelete || !productToDelete.order_id) {
             console.error("Order Product ID missing for deletion.");
             Toast.show({ type: 'error', text1: 'Deletion Error', text2: "Could not delete product item. Order Product ID missing." });
             return;
         }
-
+    
         setDeleteLoading(true);
         setDeleteLoadingIndex(indexToDelete);
         setError(null);
-
+    
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
             const orderProductIdToDelete = productToDelete.product_id;
-            console.log(orderProductIdToDelete)
-
+            console.log(orderProductIdToDelete);
+    
+            // **--- START: Check Loading Slip Status - Using Local 'orders' State ---**
+            const orderIdToCheck = productToDelete.order_id;
+            const orderToCheck = orders.find(order => order.id === orderIdToCheck); // **Find order in 'orders' state**
+    
+            if (orderToCheck) {
+                console.log("DEBUG - handleDeleteProductItem: Order from 'orders' state:", orderToCheck); // Debug log
+                if (orderToCheck.loading_slip === 'Yes') {
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Deletion Prohibited',
+                        text2: "Loading slip already generated for this order."
+                    });
+                    setDeleteLoading(false);
+                    setDeleteLoadingIndex(null);
+                    return; // **Early return if loading slip is 'yes'**
+                }
+            } else {
+                console.warn("DEBUG - handleDeleteProductItem: Order not found in 'orders' state for ID:", orderIdToCheck);
+                Toast.show({ type: 'warning', text1: 'Warning', text2: "Could not verify loading slip status. Proceeding with deletion." });
+                // **Decide how to handle if order is not found in local state.**
+                // **For now, proceeding with deletion, but you might want to handle this differently**
+                // **e.g.,  show an error, or refetch orders.**
+            }
+            // **--- END: Check Loading Slip Status - Using Local 'orders' State ---**
+    
+    
             const url = `http://${ipAddress}:8090/delete_order_product/${orderProductIdToDelete}`;
             const headers = {
                 "Authorization": `Bearer ${token}`,
@@ -200,7 +226,7 @@ const UpdateOrdersU = () => {
                 method: 'DELETE',
                 headers: headers,
             });
-
+    
             if (!deleteResponse.ok) {
                 const errorText = await deleteResponse.text();
                 const message = `Failed to delete order product. Status: ${deleteResponse.status}, Text: ${errorText}`;
@@ -208,10 +234,10 @@ const UpdateOrdersU = () => {
                 console.error("DELETE ORDER PRODUCT - Full Error Response:", errorText);
                 throw new Error(message);
             }
-
+    
             const deleteData = await deleteResponse.json();
             console.log("DELETE ORDER PRODUCT - Response Data:", deleteData);
-
+    
             // Check if this was the last product
             if (products.length === 1) {
                 // Call handleDeleteOrder to cancel the entire order
@@ -227,7 +253,7 @@ const UpdateOrdersU = () => {
                 });
             }
             setIsOrderUpdated(false);
-
+    
         } catch (deleteError) {
             console.error("DELETE ORDER PRODUCT - Error:", deleteError);
             setError(deleteError.message || "Failed to delete order product.");
@@ -309,6 +335,29 @@ const UpdateOrdersU = () => {
                 return;
             }
     
+            // **--- START: Check Loading Slip Status - Using Local 'orders' State ---**
+            const orderIdToCheck = selectedOrderId;
+            const orderToCheck = orders.find(order => order.id === orderIdToCheck); // **Find order in 'orders' state**
+    
+            if (orderToCheck) {
+                console.log("DEBUG - handleUpdateOrder: Order from 'orders' state:", orderToCheck); // Debug log
+                if (orderToCheck.loading_slip === 'Yes') {
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Order Update Prohibited',
+                        text2: "Loading slip already generated for this order."
+                    });
+                    setLoading(false); // Stop loading indicator
+                    return; // **Early return if loading slip is 'Yes'**
+                }
+            } else {
+                console.warn("DEBUG - handleUpdateOrder: Order not found in 'orders' state for ID:", orderIdToCheck);
+                Toast.show({ type: 'warning', text1: 'Warning', text2: "Could not verify loading slip status. Proceeding with update." });
+                // **Again, decide if proceeding with update is the right behavior.**
+            }
+            // **--- END: Check Loading Slip Status - Using Local 'orders' State ---**
+    
+    
             // Calculate new total amount
             let calculatedTotalAmount = 0;
             const productsToUpdate = products.map(product => ({
@@ -349,6 +398,7 @@ const UpdateOrdersU = () => {
                 setLoading(false);
                 return;
             }
+    
     
             const url = `http://${ipAddress}:8090/order_update`;
             const headers = {
@@ -516,6 +566,27 @@ const UpdateOrdersU = () => {
                 Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
             };
+
+            // **--- START: Check Loading Slip Status - Using Local 'orders' State ---**
+            const orderToCheck = orders.find(order => order.id === orderIdToDelete); // **Find order in 'orders' state**
+
+            if (orderToCheck) {
+                console.log("DEBUG - handleDeleteOrder: Order from 'orders' state:", orderToCheck); // Debug log
+                if (orderToCheck.loading_slip === 'Yes') {
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Cancellation Prohibited',
+                        text2: "Loading slip already generated for this order."
+                    });
+                    setOrderDeleteLoading(false); // Stop loading indicator
+                    setOrderDeleteLoadingId(null);
+                    return; // **Early return if loading slip is 'Yes'**
+                }
+            } else {
+                console.warn("DEBUG - handleDeleteOrder: Order not found in 'orders' state for ID:", orderIdToDelete);
+                Toast.show({ type: 'warning', text1: 'Warning', text2: "Could not verify loading slip status. Proceeding with cancellation." });
+                // **Again, decide if proceeding with cancellation is the right behavior.**
+            }
     
             const deleteOrderResponse = await fetch(
                 `http://${ipAddress}:8090/cancel_order/${orderIdToDelete}`,
@@ -690,7 +761,7 @@ const UpdateOrdersU = () => {
             Alert.alert("Error", "Please select an order before adding products.");
             return;
         }
-
+    
         const isProductAlreadyAdded = products.some(p => p.product_id === productToAdd.id);
         if (isProductAlreadyAdded) {
             Toast.show({
@@ -701,12 +772,36 @@ const UpdateOrdersU = () => {
             setShowSearchModal(false);
             return;
         }
-
+    
         setLoading(true);
         setError(null);
-
+    
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
+    
+            // **--- START: Check Loading Slip Status - Using Local 'orders' State ---**
+            const orderIdToCheck = selectedOrderId;
+            const orderToCheck = orders.find(order => order.id === orderIdToCheck); // **Find order in 'orders' state**
+    
+            if (orderToCheck) {
+                console.log("DEBUG - handleAddProductToOrder: Order from 'orders' state:", orderToCheck); // Debug log
+                if (orderToCheck.loading_slip === 'Yes') { // **Corrected comparison: 'Yes' with uppercase 'Y'**
+                    Toast.show({
+                        type: 'error',
+                        text1: 'Adding Product Prohibited',
+                        text2: "Loading slip already generated for this order."
+                    });
+                    setLoading(false); // Ensure loading indicator is stopped
+                    return; // **Early return if loading slip is 'Yes'**
+                }
+            } else {
+                console.warn("DEBUG - handleAddProductToOrder: Order not found in 'orders' state for ID:", orderIdToCheck);
+                Toast.show({ type: 'warning', text1: 'Warning', text2: "Could not verify loading slip status. Proceeding with adding product." });
+                // **Again, decide if proceeding is the right behavior if order is not in state.**
+            }
+            // **--- END: Check Loading Slip Status - Using Local 'orders' State ---**
+    
+    
             const url = `http://${ipAddress}:8090/add-product-to-order`;
             const headers = {
                 "Authorization": `Bearer ${token}`,
@@ -717,33 +812,33 @@ const UpdateOrdersU = () => {
                 productId: productToAdd.id,
                 quantity: 1,
                 price: productToAdd.price,
-                name: productToAdd.name, 
+                name: productToAdd.name,
                 category: productToAdd.category, // Include product category
             };
-
+    
             console.log("ADD PRODUCT TO ORDER - Request URL:", url);
             console.log("ADD PRODUCT TO ORDER - Request Headers:", headers);
             console.log("ADD PRODUCT TO ORDER - Request Body:", JSON.stringify(requestBody, null, 2));
-
+    
             const addProductResponse = await fetch(url, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify(requestBody)
             });
-
+    
             console.log("ADD PRODUCT TO ORDER - Response Status:", addProductResponse.status);
             console.log("ADD PRODUCT TO ORDER - Response Status Text:", addProductResponse.statusText);
-
+    
             if (!addProductResponse.ok) {
                 const errorText = await addProductResponse.text();
                 const message = `Failed to add product to order. Status: ${addProductResponse.status}, Text: ${errorText}`;
                 console.error("ADD PRODUCT TO ORDER - Error Response Text:", errorText);
                 throw new Error(message);
             }
-
+    
             const addProductData = await addProductResponse.json();
             console.log("ADD PRODUCT TO ORDER - Response Data:", addProductData);
-
+    
             if (addProductData.success) {
                 Toast.show({
                     type: 'success',
@@ -761,7 +856,7 @@ const UpdateOrdersU = () => {
                 });
                 setError(addProductData.message || "Failed to add product to order.");
             }
-
+    
         } catch (error) {
             console.error("ADD PRODUCT TO ORDER - Error:", error);
             setError(error.message || "Failed to add product to order.");
