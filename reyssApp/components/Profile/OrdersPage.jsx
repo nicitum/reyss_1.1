@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
     View,
     Text,
@@ -12,16 +12,38 @@ import axios from "axios";
 import { ipAddress } from "../../urls";
 import { checkTokenAndRedirect } from "../../services/auth";
 import { useNavigation } from "@react-navigation/native";
+import moment from 'moment';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 const OrdersPage = () => {
-    const [orders, setOrders] = useState([]);
+    const [allOrders, setAllOrders] = useState([]); // State to hold all fetched orders
+    const [orders, setOrders] = useState([]); // State to hold filtered orders for display
     const [loading, setLoading] = useState(true);
     const navigation = useNavigation();
     const [expandedOrderDetailsId, setExpandedOrderDetailsId] = useState(null);
     const [orderDetails, setOrderDetails] = useState({});
 
+    // Date Picker State
+    const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(new Date());
 
-    const fetchOrders = async () => {
+    const showDatePicker = () => {
+        setDatePickerVisibility(true);
+    };
+
+    const hideDatePicker = () => {
+        setDatePickerVisibility(false);
+    };
+
+    const handleConfirm = (date) => {
+        hideDatePicker();
+        setSelectedDate(date);
+        // Filter orders based on the newly selected date
+        filterOrdersByDate(date);
+    };
+
+    // useCallback for fetchOrders (fetches ALL orders now)
+    const fetchOrders = useCallback(async () => {
         try {
             setLoading(true);
             const token = await checkTokenAndRedirect(navigation);
@@ -34,25 +56,52 @@ const OrdersPage = () => {
                         Authorization: `Bearer ${token}`,
                     },
                     params: {
-                        orderBy: "DESC", // Keep orderBy if needed, remove pagination params
+                        orderBy: "DESC",
                     },
                 }
             );
 
-            setOrders(response.data.orders);
-            console.log(response.data.orders)
+            setAllOrders(response.data.orders); // Store ALL fetched orders in allOrders
+            console.log("Fetched ALL orders:", response.data.orders.length);
+            filterOrdersByDate(selectedDate); // Initial filter to show today's orders
+
         } catch (error) {
             console.error("Error fetching order history:", error);
             Alert.alert("Error", "Failed to fetch orders. Please try again.");
         } finally {
             setLoading(false);
         }
-    };
+    }, [navigation]);
+
+    // Function to filter orders based on selectedDate
+    const filterOrdersByDate = useCallback((dateFilter) => {
+        if (!allOrders) return; // Exit if allOrders is not yet fetched
+
+        const filterDateFormatted = moment(dateFilter).format("YYYY-MM-DD");
+        console.log("DEBUG: Filtering Orders for Date:", filterDateFormatted);
+
+        const filteredOrders = allOrders.filter(order => {
+            if (!order.placed_on) {
+                console.log("DEBUG: order.placed_on is missing for order ID:", order.order_id);
+                return false;
+            }
+            const parsedEpochSeconds = parseInt(order.placed_on, 10);
+            const orderDateMoment = moment.unix(parsedEpochSeconds);
+            const orderDateFormatted = orderDateMoment.format("YYYY-MM-DD");
+            return orderDateFormatted === filterDateFormatted;
+        });
+        setOrders(filteredOrders); // Set the filtered orders to be displayed
+        console.log("Filtered orders count:", filteredOrders.length);
+    }, [allOrders]); // Dependency: allOrders - re-filter when allOrders changes
+
 
     useEffect(() => {
-        fetchOrders();
-    }, []); // Fetch orders on component mount
+        fetchOrders(); // Fetch all orders on component mount
+    }, [fetchOrders]); // Fetch orders only once on mount
 
+    useEffect(() => {
+        filterOrdersByDate(selectedDate); // Re-filter orders when selectedDate changes
+    }, [selectedDate, filterOrdersByDate]); // Re-filter when selectedDate changes
 
     const fetchOrderProducts = async (orderId) => {
         try {
@@ -78,7 +127,6 @@ const OrdersPage = () => {
         }
     };
 
-
     const handleOrderDetailsPress = async (orderId) => {
         if (expandedOrderDetailsId === orderId) {
             setExpandedOrderDetailsId(null);
@@ -91,31 +139,40 @@ const OrdersPage = () => {
         }
     };
 
-
     const renderOrderDetails = (orderId) => {
-        const products = orderDetails[orderId];
-        if (!expandedOrderDetailsId || expandedOrderDetailsId !== orderId || !products) {
-            return null;
-        }
-
-        return (
-            <View style={styles.orderDetailsContainer}>
-                <Text style={styles.orderDetailsTitle}>Order Details:</Text>
-                {products.length > 0 ? (
-                    products.map((product, index) => (
-                        <View key={`${orderId}-${product.product_id}-${index}`} style={styles.productDetailItem}>
-                            <Text style={styles.productDetailText}>
-                                {product.name} - Quantity: {product.quantity}, Price: ₹{product.price}, Category: {product.category}
-                            </Text>
-                        </View>
-                    ))
-                ) : (
-                    <Text style={styles.noProductsText}>No products found for this order.</Text>
-                )}
-            </View>
-        );
-    };
-
+           const products = orderDetails[orderId];
+           if (!expandedOrderDetailsId || expandedOrderDetailsId !== orderId || !products) {
+               return null;
+           }
+   
+           return (
+               <View style={detailStyles.orderDetailsContainer}>
+                   <Text style={detailStyles.orderDetailsTitle}>Order Details:</Text>
+   
+                   {/* Header Row */}
+                   <View style={detailStyles.headerRow}>
+                       <Text style={detailStyles.headerCell}>Product</Text>
+                       <Text style={detailStyles.headerCell}>Category</Text>
+                       <Text style={detailStyles.headerCell}>Quantity</Text>
+                       <Text style={detailStyles.headerCell}>Price</Text>
+                   </View>
+   
+                   {/* Product Rows */}
+                   {products.length > 0 ? (
+                       products.map((product, index) => (
+                           <View key={`${orderId}-${product.product_id}-${index}`} style={detailStyles.productRow}>
+                               <Text style={detailStyles.productCell}>{product.name}</Text>
+                               <Text style={detailStyles.productCell}>{product.category}</Text>
+                               <Text style={detailStyles.productCell}>{product.quantity}</Text>
+                               <Text style={detailStyles.productCell}>₹{product.price}</Text>
+                           </View>
+                       ))
+                   ) : (
+                       <Text style={detailStyles.noProductsText}>No products found.</Text>
+                   )}
+               </View>
+           );
+       };
 
     if (loading) {
         return (
@@ -127,9 +184,25 @@ const OrdersPage = () => {
 
     return (
         <View style={styles.container}>
+            <View style={styles.dateFilterContainer}>
+                <TouchableOpacity style={styles.dateButton} onPress={showDatePicker}>
+                    <Text style={styles.dateButtonText}>
+                        {moment(selectedDate).format('YYYY-MM-DD')}
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
+            <DateTimePickerModal
+                isVisible={isDatePickerVisible}
+                mode="date"
+                onConfirm={handleConfirm}
+                onCancel={hideDatePicker}
+                date={selectedDate}
+            />
+
             <ScrollView>
                 {orders.length === 0 ? (
-                    <Text style={styles.noOrdersText}>No orders found.</Text>
+                    <Text style={styles.noOrdersText}>No orders found for selected date.</Text>
                 ) : (
                     <View style={styles.tableContainer}>
                         <View style={styles.tableHeader}>
@@ -193,6 +266,24 @@ const OrdersPage = () => {
 };
 
 const styles = StyleSheet.create({
+    dateFilterContainer: {
+        flexDirection: 'row',
+        justifyContent: 'flex-start',
+        padding: 10,
+        backgroundColor: '#f0f0f0',
+        borderBottomWidth: 1,
+        borderBottomColor: '#ccc',
+    },
+    dateButton: {
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        backgroundColor: '#ffcc00',
+        borderRadius: 5,
+    },
+    dateButtonText: {
+        color: '#fff',
+        fontSize: 14,
+    },
     loadingContainer: {
         flex: 1,
         justifyContent: "center",
@@ -242,11 +333,11 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     actionCell: {
-        width: 80, // Adjust width as needed for the button
+        width: 80,
         alignItems: "center",
     },
     statusCell: {
-        width: 100, // Adjust width as needed for status text
+        width: 100,
         alignItems: "center",
     },
     cellText: {
@@ -256,7 +347,7 @@ const styles = StyleSheet.create({
     },
     detailsButtonText: {
         fontSize: 12,
-        color: "#03A9F4", // Example color for details button
+        color: "#03A9F4",
     },
     deliveryStatusText: {
         fontSize: 12,
@@ -292,5 +383,57 @@ const styles = StyleSheet.create({
         marginTop: 10,
     }
 });
+
+
+
+
+const detailStyles = StyleSheet.create({
+    orderDetailsContainer: {
+        padding: 10,
+        backgroundColor: '#f9f9f9',
+        borderBottomWidth: 1,
+        borderBottomColor: '#E0E0E0',
+    },
+    orderDetailsTitle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        marginBottom: 8,
+        color: '#333',
+    },
+    headerRow: {
+        flexDirection: 'row',
+        backgroundColor: '#f0f0f0',
+        paddingVertical: 8,
+        marginBottom: 4,
+        borderBottomWidth: 1,
+        borderBottomColor: '#ddd',
+    },
+    headerCell: {
+        flex: 1,
+        fontSize: 12,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        color: '#333',
+    },
+    productRow: {
+        flexDirection: 'row',
+        paddingVertical: 6,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    productCell: {
+        flex: 1,
+        fontSize: 11,
+        textAlign: 'center',
+        color: '#555',
+    },
+    noProductsText: {
+        fontSize: 12,
+        color: '#777',
+        textAlign: 'center',
+        marginTop: 6,
+    }
+});
+
 
 export default OrdersPage;

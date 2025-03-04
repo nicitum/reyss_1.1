@@ -999,6 +999,48 @@ router.get('/get_customer_credit_summaries', async (req, res) => { // Renamed en
         res.status(500).json({ message: "Failed to fetch customer credit summaries" }); // Error message updated
     }
 });
+
+
+
+router.post("/payment-response", async (req, res) => { // Define POST route for /payment-response
+    try {
+        const postData = req.body; // Get POST request body
+        console.log("Received POST data from Worldline (Payment Response):", postData); // Log received data
+
+        // **IMPORTANT:  In a real production app, you MUST VERIFY THE HASH here!**
+        // ... (Hash verification code using your Merchant ID, SALT, and msg - MUST BE ADDED LATER) ...
+        // ... (For now, we are skipping hash verification in this example for simplicity) ...
+
+        const msg = postData.msg; // Extract 'msg' parameter from POST body
+
+        if (!msg) { // Basic error handling: Check if 'msg' parameter is present
+            console.error("Error: 'msg' parameter not found in Payment Response POST request.");
+            return res.status(400).send('Bad Request: msg parameter is missing in payment response.'); // Send 400 error if msg is missing
+        }
+
+        // Parse the pipe-separated 'msg' string to extract data components
+        const msgParts = msg.split('|');
+        const txnStatus = msgParts[0] || 'UNKNOWN';
+        const txnMessage = msgParts[1] || '';
+        const txnReference = msgParts[3] || '';
+        const transactionId = msgParts[5] || '';
+        const txnAmount = msgParts[6] || '';
+
+        // Construct the redirect URL with parameters to send back to the WebView in Expo App
+        const redirectURL = `your-app-scheme://payment-response?txnStatus=${encodeURIComponent(txnStatus)}&txnMessage=${encodeURIComponent(txnMessage)}&txnReference=${encodeURIComponent(txnReference)}&transactionId=${encodeURIComponent(transactionId)}&txnAmount=${encodeURIComponent(txnAmount)}&fullMsg=${encodeURIComponent(msg)}`;
+
+        console.log("Local API Redirecting WebView to:", redirectURL); // Log the redirect URL
+
+        res.redirect(302, redirectURL); // Send HTTP 302 Redirect response
+        // Note: We are using res.redirect() to send a redirect to the WebView.
+        // In a typical JSON API, you might use res.json() for data responses, but here we need a redirect.
+
+
+    } catch (error) {
+        console.error("Error handling payment response:", error); // Log any errors during processing
+        return res.status(500).json({ message: "Internal server error processing payment response" }); // Send 500 error for internal server errors
+    }
+});
 module.exports = router;
 
 

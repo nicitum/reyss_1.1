@@ -5,13 +5,13 @@ import OrdersPage from './OrdersPage';
 import DeliveryStatusUpdate from './DeliveryStatusUpdate';
 import UpdateOrderScreen from './UpdateOrders';
 import UpdateOrdersU from './UpdateOrdersU';
-import AdminOrderHistory from './AdminOrderHistory';
 import PlaceOrderAdmin from './PlaceOrderAdmin';
 import LoadingSlip from './LoadingSlip';
 import PaymentScreen from './Payments';
 import CollectCashPage from './CollectCash';
 import CreditLimitPage from './CreditLimit';
 import AdminAssignedUsersPage from '../route_mgr/AdminAssignedUsers';
+import DailyOrdersReport from './DailyOrdersReport';
 
 const Stack = createStackNavigator();
 
@@ -84,6 +84,13 @@ const ProfileStack = () => {
         name="CreditLimit" 
         component={CreditLimitPage} 
         options={{ title: 'CreditLimit' }} 
+        
+      />
+
+      <Stack.Screen 
+        name="DailyOrdersReport" 
+        component={DailyOrdersReport} 
+        options={{ title: 'DailyOrdersReport' }} 
         
       />
 

@@ -70,7 +70,7 @@ const TabNavigator = () => {
         >
             <Tab.Screen
                 name="Home"
-                component={isSuperAdmin ? AdminHomePage : HomeStack} // Conditional component here!
+                component={isSuperAdmin ? AdminHomePage : HomeStack}
                 options={{
                     tabBarIcon: ({ color, size }) => (
                         <MaterialCommunityIcons name="home" size={size} color={color} />
@@ -82,6 +82,8 @@ const TabNavigator = () => {
                     name="Indent"
                     component={isAdmin ? AdminOrderHistory : IndentStack}
                     options={{
+                        headerShown: true,
+                        headerTitle: isAdmin ? "Admin Order History" : "Indent",
                         tabBarIcon: ({ color, size }) => (
                             <MaterialCommunityIcons name="rss" size={size} color={color} />
                         ),

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback} from "react";
 import {
     View,
     Text,
@@ -56,6 +56,8 @@ const LoadingSlipPage = () => {
     }, []);
 
 
+
+
     const fetchAssignedUsers = useCallback(async (currentAdminId, userAuthToken) => {
         try {
             const response = await fetch(`http://${ipAddress}:8090/assigned-users/${currentAdminId}`, {
@@ -106,8 +108,8 @@ const LoadingSlipPage = () => {
                 const orderDate = moment.unix(parseInt(order.placed_on, 10)).format("YYYY-MM-DD");
                 return orderDate === todayFormatted;
             });
-
-            setAdminOrders(todaysOrders);
+            const nonCancelledOrders = todaysOrders.filter(order => order.cancelled !== 'Yes' && order.approve_status === 'Accepted');
+            setAdminOrders(nonCancelledOrders);
         } catch (err) {
             setError(err.message || "Failed to fetch admin orders.");
             Alert.alert("Error", "Failed to fetch admin orders. Please try again.");

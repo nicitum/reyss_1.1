@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { 
-    View, 
-    Text, 
-    ActivityIndicator, 
-    StyleSheet, 
-    FlatList, 
-    TouchableOpacity 
+import {
+    View,
+    Text,
+    ActivityIndicator,
+    StyleSheet,
+    ScrollView, // Changed FlatList to ScrollView
+    TouchableOpacity
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import axios from "axios";
@@ -20,7 +20,7 @@ const OrderItem = React.memo(({ item, onStatusUpdate, loading }) => {
 
     const handleStatusChange = async (newStatus) => {
         if (isDelivered) return; // Prevent changes if already delivered
-        
+
         try {
             await onStatusUpdate(item.id, newStatus);
             setLocalStatus(newStatus);
@@ -38,7 +38,7 @@ const OrderItem = React.memo(({ item, onStatusUpdate, loading }) => {
             <View style={styles.orderHeader}>
                 <Text style={styles.orderTitle}>Order #{item.id}</Text>
                 <View style={[
-                    styles.statusBadge, 
+                    styles.statusBadge,
                     { backgroundColor: isDelivered ? '#4CAF50' : '#FFA000' }
                 ]}>
                     <Text style={styles.statusText}>
@@ -52,7 +52,7 @@ const OrderItem = React.memo(({ item, onStatusUpdate, loading }) => {
                     Date: {new Date(item.placed_on * 1000).toLocaleDateString()}
                 </Text>
                 <Text style={styles.detailText}>
-                    Amount: ₹{item.amount || 0}
+                    Amount: ₹{item.total_amount || 0}
                 </Text>
             </View>
 
@@ -130,9 +130,9 @@ const DeliveryStatusUpdate = () => {
 
             if (response.data.status) {
                 // Update local state
-                setOrders(prevOrders => 
-                    prevOrders.map(order => 
-                        order.id === orderId 
+                setOrders(prevOrders =>
+                    prevOrders.map(order =>
+                        order.id === orderId
                             ? { ...order, delivery_status: newStatus }
                             : order
                     )
@@ -162,33 +162,36 @@ const DeliveryStatusUpdate = () => {
     }
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.headerText}>Delivery Status</Text>
-            
-            <FlatList
-                data={orders}
-                keyExtractor={item => item.id.toString()}
-                renderItem={({ item }) => (
-                    <OrderItem
-                        item={item}
-                        onStatusUpdate={handleStatusUpdate}
-                        loading={loading}
-                    />
-                )}
-                ListEmptyComponent={
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
+            <View style={styles.container}>
+                <Text style={styles.headerText}>Delivery Status</Text>
+
+                {orders.length > 0 ? (
+                    orders.map((item) => (
+                        <OrderItem
+                            key={item.id.toString()}
+                            item={item}
+                            onStatusUpdate={handleStatusUpdate}
+                            loading={loading}
+                        />
+                    ))
+                ) : (
                     <Text style={styles.emptyText}>No orders found</Text>
-                }
-            />
-            <Toast />
-        </View>
+                )}
+                <Toast />
+            </View>
+        </ScrollView>
     );
 };
 
 const styles = StyleSheet.create({
+    scrollContainer: { // Added scroll container style
+        paddingVertical: 16, // Add vertical padding to the scroll view content
+    },
     container: {
-        flex: 1,
+        flexGrow: 1, // Ensure container can grow within ScrollView
         backgroundColor: '#F5F5F5',
-        padding: 16
+        paddingHorizontal: 16,
     },
     centerContainer: {
         flex: 1,
@@ -196,67 +199,67 @@ const styles = StyleSheet.create({
         alignItems: 'center'
     },
     headerText: {
-        fontSize: 24,
+        fontSize: 22, // Slightly reduced header font size
         fontWeight: 'bold',
-        marginBottom: 20,
+        marginBottom: 16, // Slightly reduced header margin
         color: '#333'
     },
     orderCard: {
         backgroundColor: '#FFFFFF',
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 16,
-        elevation: 3,
+        borderRadius: 8, // Slightly reduced card border radius
+        padding: 12, // Reduced card padding
+        marginBottom: 12, // Reduced card margin bottom
+        elevation: 2, // Reduced elevation
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
+        shadowOffset: { width: 0, height: 1 }, // Reduced shadow height
         shadowOpacity: 0.1,
-        shadowRadius: 4
+        shadowRadius: 2 // Reduced shadow radius
     },
     deliveredCard: {
         backgroundColor: '#F5F5F5',
-        borderLeftWidth: 4,
+        borderLeftWidth: 3, // Reduced border width
         borderLeftColor: '#4CAF50'
     },
     orderHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 12
+        marginBottom: 8 // Reduced margin bottom
     },
     orderTitle: {
-        fontSize: 18,
+        fontSize: 16, // Reduced title font size
         fontWeight: 'bold',
         color: '#333'
     },
     statusBadge: {
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 16
+        paddingHorizontal: 8, // Reduced padding horizontal
+        paddingVertical: 4, // Reduced padding vertical
+        borderRadius: 12 // Reduced border radius
     },
     statusText: {
         color: '#FFFFFF',
-        fontSize: 14,
+        fontSize: 12, // Reduced status text font size
         fontWeight: 'bold'
     },
     orderDetails: {
-        marginBottom: 16,
-        paddingBottom: 16,
+        marginBottom: 12, // Reduced margin bottom
+        paddingBottom: 12, // Reduced padding bottom
         borderBottomWidth: 1,
         borderBottomColor: '#E0E0E0'
     },
     detailText: {
-        fontSize: 16,
+        fontSize: 14, // Reduced detail text font size
         color: '#666',
-        marginBottom: 4
+        marginBottom: 3 // Reduced margin bottom
     },
     actionContainer: {
-        marginTop: 8
+        marginTop: 4 // Reduced margin top
     },
     picker: {
         backgroundColor: '#F5F5F5',
-        borderRadius: 8,
+        borderRadius: 6, // Reduced picker border radius
         width: '100%',
-        height: 50
+        height: 50 // Reduced picker height
     },
     disabledPicker: {
         opacity: 0.7,
@@ -264,9 +267,9 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         textAlign: 'center',
-        fontSize: 16,
+        fontSize: 14, // Reduced empty text font size
         color: '#666',
-        marginTop: 32
+        marginTop: 24 // Reduced margin top
     }
 });
 

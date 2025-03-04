@@ -92,16 +92,18 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={styles.menuItem}
-                    onPress={toggleOrdersSubMenu}
-                >
-                    <View style={styles.menuIconText}>
+                {(userRole === "admin" || userRole === "user") && (// Conditionally render Orders menu for non-superadmins
+                    <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={toggleOrdersSubMenu}
+                    >
+                        <View style={styles.menuIconText}>
                         <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
                         <Text style={styles.menuText}>Orders</Text>
-                    </View>
-                    <MaterialIcons name={isOrdersSubMenuOpen ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={24} color="#ffcc00" />
-                </TouchableOpacity>
+                        </View>
+                        <MaterialIcons name={isOrdersSubMenuOpen ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={24} color="#ffcc00" />
+                    </TouchableOpacity>
+                )}
 
                 {isOrdersSubMenuOpen && (
                     <View style={styles.subMenu}>
@@ -177,46 +179,66 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                         )}
                     </View>
                 )}
-
-                {userRole === "admin" && ( // Conditionally render "Reports" menu for admin only
-                    <TouchableOpacity
-                        style={styles.menuItem}
-                        onPress={toggleReportsSubMenu}
-                    >
-                        <View style={styles.menuIconText}>
-                            <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
-                            <Text style={styles.menuText}>Reports</Text>
-                        </View>
-                        <MaterialIcons name={isReportsSubMenuOpen ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={24} color="#ffcc00" />
-                    </TouchableOpacity>
-                )}
-
-                {isReportsSubMenuOpen && userRole === "admin" && ( // Conditionally render Reports submenu for admin only
-                    <View style={styles.subMenu}>
-                        <TouchableOpacity
-                            style={styles.subMenuItem}
-                            onPress={navigateToLoadingSlip}
-                        >
-                            <Text style={styles.subMenuText}>Loading Slip</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.subMenuItem}
-                            onPress={() => { navigateToAdminOrders(); navigation.navigate("CreditLimit"); }}
-                        >
-                            <Text style={styles.subMenuText}>CreditLimit</Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
-
-
-                <TouchableOpacity style={styles.menuItem} onPress={() => openModal(PayHereContent)}>
+                {(userRole === "admin" || userRole === "superadmin") && (
+                <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={toggleReportsSubMenu}
+                >
                     <View style={styles.menuIconText}>
-                        <MaterialIcons name="payment" size={24} color="#ffcc00" />
-                        <Text style={styles.menuText}>Pay Here</Text>
+                    <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                    <Text style={styles.menuText}>Reports</Text>
                     </View>
-                    <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                    <MaterialIcons
+                    name={isReportsSubMenuOpen ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                    size={24}
+                    color="#ffcc00"
+                    />
                 </TouchableOpacity>
+                )}
+
+                {isReportsSubMenuOpen && (userRole === "admin" || userRole === "superadmin") && (
+                <View style={styles.subMenu}>
+                    {userRole === "admin" && (
+                    <TouchableOpacity
+                        style={styles.subMenuItem}
+                        onPress={navigateToLoadingSlip}
+                    >
+                        <Text style={styles.subMenuText}>Loading Slip</Text>
+                    </TouchableOpacity>
+                    )}
+
+                    {userRole === "superadmin" && (
+                    <TouchableOpacity
+                        style={styles.subMenuItem}
+                        onPress={() => {
+                        navigation.navigate("CreditLimit");
+                        }}
+                    >
+                        <Text style={styles.subMenuText}>CreditLimit</Text>
+                        
+                    </TouchableOpacity>
+                    
+
+                    
+                    )}
+                    {userRole === "superadmin" && (
+                    <TouchableOpacity
+                        style={styles.subMenuItem}
+                        onPress={() => {
+                        navigation.navigate("DailyOrdersReport");
+                        }}
+                    >
+                        <Text style={styles.subMenuText}>Daily Orders Report</Text>
+                        
+                    </TouchableOpacity>
+                    
+
+                    
+                    )}
+                </View>
+                )}
+
+             
 
                 <TouchableOpacity style={styles.menuItem} onPress={() => openModal(PaymentsHistoryContent)}>
                     <View style={styles.menuIconText}>
