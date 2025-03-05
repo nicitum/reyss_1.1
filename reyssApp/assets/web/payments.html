@@ -16,71 +16,12 @@
     <script type="text/javascript">
         $(document).ready(function() {
             function handleResponse(res) {
-                console.log("handleResponse function is CALLED!");
-                console.log("--- PayNimo Response (Start) ---");
-                console.log(JSON.stringify(res, null, 2));
-                console.log("--- PayNimo Response (End) ---");
-
-                if (!res || Object.keys(res).length === 0) {
-                    // **Assume we are in a redirect scenario (no proper 'res' object)**
-                    console.log("No 'res' object received in handleResponse. Assuming redirect scenario.");
-                    const currentUrl = window.location.href;
-                    console.log("Current URL:", currentUrl);
-
-                    // **Function to parse URL parameters** (simple version for 'msg' and 'Parameter%20NameParameter')
-                    function getUrlParams() {
-                        const params = {};
-                        const queryString = window.location.href.substring(window.location.href.indexOf('?') + 1); // Get part after '?'
-                        const paramPairs = queryString.split('&');
-
-                        for (const pair of paramPairs) {
-                            const [key, value] = pair.split('=');
-                            if (key && value) { // Check if both key and value exist
-                                params[key] = decodeURIComponent(value.replace(/\+/g, ' ')); // Decode URL encoding
-                            }
-                        }
-                        return params;
-                    }
-
-                    const urlParams = getUrlParams(currentUrl);
-                    console.log("Extracted URL Parameters:", urlParams);
-
-
-                    if (window.ReactNativeWebView) {
-                        window.ReactNativeWebView.postMessage(JSON.stringify(urlParams)); // Send URL parameters as JSON
-                    } else {
-                        console.log("Not in React Native WebView, postMessage skipped (redirect data).");
-                    }
-
-
-                } else if (typeof res != "undefined" && typeof res.paymentMethod != "undefined" && typeof res.paymentMethod.paymentTransaction != "undefined" && typeof res.paymentMethod.paymentTransaction.statusCode != "undefined") {
-                    // **(Original handleResponse logic for when enableNewWindowFlow *might* work - keep it for now)**
-                    const statusCode = res.paymentMethod.paymentTransaction.statusCode;
-                    const transactionId = res.paymentMethod.paymentTransaction.transactionId;
-                    const txnReference = res.paymentMethod.paymentTransaction.txnReference;
-
-                    console.log("Status Code:", statusCode);
-                    console.log("Transaction ID (if available):", transactionId);
-                    console.log("Transaction Reference (if available):", txnReference);
-
-                    if (statusCode == "0300") {
-                        console.log("Payment Successful (responseHandler flow)!");
-                    } else if (statusCode == "0398") {
-                        console.log("Payment Initiated/Pending (responseHandler flow).");
-                    } else {
-                        console.log("Payment Error or Failure (responseHandler flow). Status Code:", statusCode);
-                    }
-
-
-                    if (window.ReactNativeWebView) {
-                        window.ReactNativeWebView.postMessage(JSON.stringify(res)); // Still send the original 'res' in this case (if it ever works)
-                    } else {
-                        console.log("Not in React Native WebView, postMessage skipped (original res).");
-                    }
-
-
+                if (typeof res != "undefined" && typeof res.paymentMethod != "undefined" && typeof res.paymentMethod.paymentTransaction != "undefined" && typeof res.paymentMethod.paymentTransaction.statusCode != "undefined" && res.paymentMethod.paymentTransaction.statusCode == "0300") {
+                    // success block
+                } else if (typeof res != "undefined" && typeof res.paymentMethod != "undefined" && typeof res.paymentMethod.paymentTransaction != "undefined" && typeof res.paymentMethod.paymentTransaction.statusCode != "undefined" && res.paymentMethod.paymentTransaction.statusCode == "0398") {
+                    // initiated block
                 } else {
-                    console.error("Unexpected response format from PayNimo (handleResponse).");
+                    // error block
                 }
             };
 
@@ -93,29 +34,31 @@
                         "enableExpressPay": true,
                         "enableInstrumentDeRegistration" : true,
                         "enableMerTxnDetails": true,
-                        "enableNewWindowFlow": false // **VERY IMPORTANT: set to true**
+                        "enableNewWindowFlow": true 
                     },
                     "consumerData": {
-                        "deviceId": "WEBSH2",
-                        "token": "dce6c8bb6d0f6da21a86fccb8ce8df913fe386228875b0f43c2384d0c64293e9c623c95faaea2d03bf0b1314f7530b63e6e8bcfed71c6419df95e137695f9be0",  // **REPLACE WITH YOUR TEST TOKEN**
-                        "returnUrl": "http://192.168.1.13:8090/payment-response",
-                        "responseHandler": handleResponse, // **Function reference, no quotes**
+                        "deviceId": "WEBSH2",    //possible values "WEBSH1" or "WEBSH2"
+						//merchantId|txnId|totalamount|accountNo|consumerId|consumerMobileNo|consumerEmailId|debitStartDate|debitEndDate|maxAmount|amountType|frequency|cardNumber|expMonth|expYear|cvvCode|SALT
+						//T1071800|TXNo1tr2uyyw1|1||c964634||||||||||||7685617431RBIUGE
+                        "token": "dce6c8bb6d0f6da21a86fccb8ce8df913fe386228875b0f43c2384d0c64293e9c623c95faaea2d03bf0b1314f7530b63e6e8bcfed71c6419df95e137695f9be0",
+                        "returnUrl": "http://192.168.1.13:8090/payment-response",    //merchant response page URL
+                        "responseHandler": handleResponse,
                         "paymentMode": "all",
-                        "merchantLogoUrl": "https://www.paynimo.com/CompanyDocs/company-logo-vertical.png",
-                        "merchantId": "T1071800", // **REPLACE WITH YOUR MERCHANT ID**
+                        "merchantLogoUrl": "https://www.paynimo.com/CompanyDocs/company-logo-vertical.png",  //provided merchant logo will be displayed
+                        "merchantId": "T1071800",
                         "currency": "INR",
                         "consumerId": "c964634",
-                        "txnId": "TXNo1tr2uyyw1",
+                        "txnId": "TXNo1tr2uyyw1",   //Unique merchant transaction ID
                         "items": [{
                             "itemId": "first",
                             "amount": "1",
                             "comAmt": "0"
                         }],
                         "customStyle": {
-                            "PRIMARY_COLOR_CODE": "#45beaa",
-                            "SECONDARY_COLOR_CODE": "#FFFFFF",
-                            "BUTTON_COLOR_CODE_1": "#2d8c8c",
-                            "BUTTON_COLOR_CODE_2": "#FFFFFF"
+                            "PRIMARY_COLOR_CODE": "#45beaa",   //merchant primary color code
+                            "SECONDARY_COLOR_CODE": "#FFFFFF",   //provide merchant's suitable color code
+                            "BUTTON_COLOR_CODE_1": "#2d8c8c",   //merchant's button background color code
+                            "BUTTON_COLOR_CODE_2": "#FFFFFF"   //provide merchant's suitable color code for button text
                         }
                     }
                 };
