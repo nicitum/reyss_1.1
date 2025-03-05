@@ -1,7 +1,8 @@
 const express = require("express");
 const router = express.Router();
+const session = require('express-session');
 const { executeQuery } = require("../dbUtils/db");
-
+const fs = require('fs');
 
 // API to update order approved_status
 router.post("/update-order-status", async (req, res) => {
@@ -1002,148 +1003,98 @@ router.get('/get_customer_credit_summaries', async (req, res) => { // Renamed en
 });
 
 router.post('/payment-response', (req, res) => {
+
     console.log('----- Payment Response POST request received -----');
     console.log('Request Headers:', req.headers);
     console.log('Request Body:', req.body);
     console.log('Request Query:', req.query);
 
     const msgParam = req.body.msg;
+    let responseJson = {};
+    let statusCode = 200; // Default to success status
 
     if (msgParam) {
         console.log('Raw msg parameter:', msgParam);
 
         const msgParts = msgParam.split('|'); // Split by pipe delimiter
-        const txnStatus = msgParts[0];        // txn_status is the first element
+        const txnStatus = msgParts[0];       // txn_status is the first element
 
         console.log('Parsed txn_status:', txnStatus);
 
-        let responseHTML;
-        let statusCode = 200; // Default to success status
+        responseJson.txn_status_code = txnStatus;
+        responseJson.txn_msg = msgParts[1] || 'N/A';
+        responseJson.txn_err_msg = msgParts[2] || 'N/A';
+        responseJson.clnt_txn_ref = msgParts[3] || 'N/A';
+        responseJson.tpsl_txn_id = msgParts[5] || 'N/A';
+        responseJson.txn_amt = msgParts[6] || 'N/A'; // Transaction Amount
+        responseJson.ref = msgParts[3] || 'N/A';
+        responseJson.txnId = msgParts[5] || 'N/A';
 
         if (txnStatus === '0300') { // Assuming '0300' is success - **VERIFY with Paynimo documentation**
-            responseHTML = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Payment Successful</title>
-                    <style>
-                        body {
-                            font-family: sans-serif;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            min-height: 80vh;
-                            background-color: #f4f4f4;
-                        }
-                        .container {
-                            background-color: white;
-                            padding: 40px;
-                            border-radius: 8px;
-                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                            text-align: center;
-                        }
-                        h1 {
-                            color: #28a745; /* Bootstrap success color */
-                        }
-                        p {
-                            color: #555;
-                            margin-top: 20px;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <h1>Payment Successful!</h1>
-                        <p>Thank you for your payment. It has been successfully processed.</p>
-                        <p>Transaction Status: Success</p>
-                        <p>(Reference: ${msgParts[3] || 'N/A'})</p>  <p>(Transaction ID: ${msgParts[5] || 'N/A'})</p> </div>
-                </body>
-                </html>
-            `;
+            responseJson.status = "success";
         } else { // Payment unsuccessful (or not '0300') - includes "User Aborted" etc.
             statusCode = 400; // Set error status code
-            responseHTML = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Payment Unsuccessful</title>
-                    <style>
-                        body {
-                            font-family: sans-serif;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            min-height: 80vh;
-                            background-color: #f4f4f4;
-                        }
-                        .container {
-                            background-color: white;
-                            padding: 40px;
-                            border-radius: 8px;
-                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                            text-align: center;
-                        }
-                        h1 {
-                            color: #dc3545; /* Bootstrap danger color */
-                        }
-                        p {
-                            color: #555;
-                            margin-top: 20px;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="container">
-                        <h1>Payment Unsuccessful</h1>
-                        <p>Sorry, your payment was not successful.</p>
-                        <p>Transaction Status: ${txnStatus || 'Unknown'}</p>
-                        <p>Message: ${msgParts[1] || 'N/A'}</p>     <p>Error Details: ${msgParts[2] || 'N/A'}</p> <p>(Reference: ${msgParts[3] || 'N/A'})</p>   <p>(Transaction ID: ${msgParts[5] || 'N/A'})</p><p>(Please try again or contact support)</p>
-                    </div>
-                </body>
-                </html>
-            `;
+            responseJson.status = "failure";
         }
 
-        res.setHeader('Content-Type', 'text/html');
-        res.status(statusCode).send(responseHTML);
+        // --- START: Code to save responseJson to a .txt file ---
+        const filename = 'payment_response.txt'; // Filename for the text file
+        const textData = `Payment Response Data:\n${JSON.stringify(responseJson, null, 2)}`; // Format data as readable JSON string
 
+        fs.writeFile(filename, textData, (err) => {
+            if (err) {
+                console.error('Error writing to TXT file:', err);
+            } else {
+                console.log(`Data saved to ${filename}`);
+            }
+        });
+        // --- END: Code to save responseJson to a .txt file ---
+
+        res.status(statusCode).json(responseJson); // Send JSON response
 
     } else {
         console.log('Error: No "msg" parameter found in POST request body.');
-
-        const errorHTML = ` ... (Error HTML from previous response) ... `; // Reuse your error HTML
-        res.setHeader('Content-Type', 'text/html');
-        res.status(400).send(errorHTML);
+        responseJson.status = "error";
+        responseJson.message = "No 'msg' parameter found in request body.";
+        res.status(400).json(responseJson);
     }
     console.log('----- End of Payment Response POST request -----');
 });
 
-// **Payment Response Endpoint (GET - for testing reachability)**
-router.get('/payment-response', (req, res) => {
-    res.send('Payment response endpoint REACHABLE (GET - in action.js)');
+
+router.get('/get-payment-response-data', (req, res) => {
+    const filename = 'payment_response.txt';
+
+    fs.readFile(filename, 'utf8', (err, data) => {
+        if (err) {
+            console.error('Error reading TXT file:', err);
+            if (err.code === 'ENOENT') { // File not found error
+                return res.status(404).send({ message: 'Payment response data file not found.' });
+            } else {
+                return res.status(500).send({ message: 'Failed to read payment response data file.' });
+            }
+        } else {
+            // File read successfully, send the content as plain text response
+            res.status(200).send(data);
+        }
+    });
 });
-
-
-
-
-
 
 //update online payments
 
 
-
-router.post('/collect_online_payment', async (req, res) => {
+router.post('/collect_online', async (req, res) => {
     try {
         let customerId = req.query.customerId || req.body.customerId;
         if (!customerId) {
             return res.status(400).json({ message: "Customer ID is required" });
         }
 
-        const { onlinePayment } = req.body; // Expecting 'onlinePayment' in request body
+        const { online } = req.body; // Changed from 'cash' to 'online'
 
         // Fetch current customer data
         const fetchQuery = `
-            SELECT amount_due, amount_paid_online, credit_limit
+            SELECT amount_due, amount_paid_online, credit_limit  -- Changed to amount_paid_online
             FROM credit_limit
             WHERE customer_id = ?`;
         const customerDataResult = await executeQuery(fetchQuery, [customerId]);
@@ -1152,46 +1103,47 @@ router.post('/collect_online_payment', async (req, res) => {
             return res.status(404).json({ message: "Customer not found" });
         }
 
-        const { amount_due, amount_paid_online = 0, credit_limit = 0 } = customerDataResult[0];
+        const { amount_due, amount_paid_online = 0, credit_limit = 0 } = customerDataResult[0]; // Changed to amount_paid_online
         let updatedAmountDue = amount_due;
-        let newAmountPaidOnline = amount_paid_online; // Initialize
+        let newAmountPaidOnline = amount_paid_online; // Initialize for online payment
 
-        if (onlinePayment !== undefined && onlinePayment !== null) {
-            const parsedOnlinePayment = parseFloat(onlinePayment);
-            if (isNaN(parsedOnlinePayment) || parsedOnlinePayment < 0) {
-                return res.status(400).json({ message: "Invalid online payment amount. Must be a non-negative number." });
+        if (online !== undefined && online !== null) { // Changed from 'cash' to 'online'
+            const parsedOnline = parseFloat(online); // Changed from 'parsedCash' to 'parsedOnline'
+            if (isNaN(parsedOnline) || parsedOnline < 0) { // Changed from 'parsedCash' to 'parsedOnline'
+                return res.status(400).json({ message: "Invalid online amount. Must be a non-negative number." }); // Updated message
             }
 
-            newAmountPaidOnline = amount_paid_online + parsedOnlinePayment;
-            updatedAmountDue = Math.max(0, amount_due - parsedOnlinePayment);
-            const newCreditLimit = credit_limit + parsedOnlinePayment;
+            newAmountPaidOnline = amount_paid_online + parsedOnline; // Changed to amount_paid_online and parsedOnline
+            updatedAmountDue = Math.max(0, amount_due - parsedOnline); // Changed from 'parsedCash' to 'parsedOnline'
+            const newCreditLimit = credit_limit + parsedOnline; // Changed from 'parsedCash' to 'parsedOnline'
 
             // **1. Insert into payment_transactions table**
             const insertTransactionQuery = `
                 INSERT INTO payment_transactions (customer_id, payment_method, payment_amount, payment_date)
-                VALUES (?, ?, ?, NOW())`;
-            const transactionValues = [customerId, 'online', parsedOnlinePayment]; // 'online' as payment_method
+                VALUES (?, ?, ?, NOW())`; // NOW() gets current datetime in MySQL
+            const transactionValues = [customerId, 'online', parsedOnline]; // Changed payment_method to 'online' and parsedCash to parsedOnline
             await executeQuery(insertTransactionQuery, transactionValues);
 
             // **2. Update credit_limit table**
             const updateQuery = `
                 UPDATE credit_limit
-                SET amount_paid_online = ?, amount_due = ?, credit_limit = ?, online_paid_date = UNIX_TIMESTAMP()
+                SET amount_paid_online = ?, amount_due = ?, credit_limit = ?, online_paid_date = UNIX_TIMESTAMP() -- Changed to amount_paid_online and online_paid_date
                 WHERE customer_id = ?`;
-            const updateValues = [newAmountPaidOnline, updatedAmountDue, newCreditLimit, customerId]; // Update online_paid_date
+            const updateValues = [newAmountPaidOnline, updatedAmountDue, newCreditLimit, customerId]; // Changed to newAmountPaidOnline
             await executeQuery(updateQuery, updateValues);
 
             return res.status(200).json({
                 message: "Online payment collected and transaction recorded successfully", // Updated message
-                updatedAmountPaidOnline: newAmountPaidOnline, // Updated response key
+                updatedAmountPaidOnline: newAmountPaidOnline, // Changed to updatedAmountPaidOnline
                 updatedAmountDue,
-                updatedCreditLimit: newCreditLimit
+                updatedCreditLimit: newCreditLimit,
+                updatedOnlineCreditLimit: newCreditLimit // Added for consistency, same value as updatedCreditLimit
             });
         }
 
         return res.status(200).json({ amountDue: updatedAmountDue });
     } catch (error) {
-        console.error("Error processing online payment collection:", error);
+        console.error("Error processing online payment collection:", error); // Updated error message
         return res.status(500).json({ message: "Internal server error" });
     }
 });

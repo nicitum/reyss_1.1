@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const session = require('express-session');
 const userRouter = require("./routes/user");
 const orderRouter = require("./routes/order");
 const adminRouter = require("./routes/admin");
@@ -10,6 +11,14 @@ const action = require("./routes/action");
 const bodyParser = require('body-parser'); // **Import body-parser**
 
 const app = express();
+
+app.use(session({
+    secret: 'REYSS123', // Replace with a strong, random secret key
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false, httpOnly: true } // Adjust cookie settings for production
+  }));
+
 
 // **ADD body-parser middleware setup HERE, BEFORE app.use(cors()) and other routes:**
 app.use(bodyParser.urlencoded({ extended: false })); //  For parsing application/x-www-form-urlencoded

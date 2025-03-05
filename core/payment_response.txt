@@ -1,0 +1,12 @@
+Payment Response Data:
+{
+  "txn_status_code": "0300",
+  "txn_msg": "success",
+  "txn_err_msg": "NA",
+  "clnt_txn_ref": "TXNo1tr2uyyw1",
+  "tpsl_txn_id": "589959141",
+  "txn_amt": "1.00",
+  "ref": "TXNo1tr2uyyw1",
+  "txnId": "589959141",
+  "status": "success"
+}
