@@ -133,7 +133,7 @@ const AdminHomePage = () => {
                     <View style={styles.section}>
                         <Image source={require("../../assets/SL.png")} style={styles.logo} />
                         <View style={styles.companyInfo}>
-                            <Text style={[styles.companyName, styles.royalYellowText]}>SL Enterprises</Text>
+                            <Text style={[styles.companyName, styles.royalYellowText]}>SL ENTERPRISESS</Text>
                             <Text style={[styles.proprietorName, styles.whiteText]}>Proprietor Lokesh Naidu</Text>
                         </View>
                     </View>

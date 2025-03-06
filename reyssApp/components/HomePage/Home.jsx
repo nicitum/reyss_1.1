@@ -217,7 +217,7 @@ const HomePage = () => {
                     <View style={styles.section}>
                         <Image source={require("../../assets/SL.png")} style={styles.logo} />
                         <View style={styles.companyInfo}>
-                            <Text style={styles.companyName}>SL Enterprises</Text>
+                            <Text style={styles.companyName}>SL ENTERPRISESS</Text>
                             <Text style={styles.proprietorName}>Proprietor Lokesh Naidu</Text>
                         </View>
                     </View>

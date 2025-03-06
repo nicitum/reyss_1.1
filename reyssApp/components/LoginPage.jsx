@@ -59,7 +59,7 @@ const LoginPage = ({ navigation }) => {
       <View style={styles.topSection}>
         <Image source={require("../assets/SL.png")} style={styles.logo} />
         <Text style={styles.title}>REYSS</Text>
-        <Text style={styles.subtitle}>WELCOME TO SL ENTERPRISES</Text>
+        <Text style={styles.subtitle}>WELCOME TO SL ENTERPRISESS</Text>
       </View>
 
       {/* Bottom Yellow Background (30% yellow) */}

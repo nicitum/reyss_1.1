@@ -5,6 +5,8 @@ const userRouter = require("./routes/user");
 const orderRouter = require("./routes/order");
 const adminRouter = require("./routes/admin");
 const generalRouter = require("./routes/generalRoutes");
+const worldline = require("./routes/worldline");
+
 
 const adminAssignRoutes = require("./routes/adminassign"); // Import the new route
 const action = require("./routes/action");
@@ -39,7 +41,10 @@ app.use("/", adminRouter);
 app.use("/", generalRouter);
 app.use("/",adminAssignRoutes);
 
+
 app.use("/",action);
+
+app.use("/",worldline);
 
 app.get("/s", (req, res) => {
     res.send("Secured page.");

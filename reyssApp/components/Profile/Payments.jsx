@@ -1,12 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { StyleSheet, View, Linking, Text, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Alert, ActivityIndicator, Linking } from 'react-native'; // Import Linking
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import Toast from 'react-native-toast-message';
 
 export default function Payments() {
     const [paymentData, setPaymentData] = useState(null);
-    // const [customerId, setCustomerId] = useState(null); // REMOVED component-level customerId state
     const [isCollectingOnlinePayment, setIsCollectingOnlinePayment] = useState(false);
     const [refreshData, setRefreshData] = useState(false);
 
@@ -31,7 +30,7 @@ export default function Payments() {
 
                 if (jsonData && jsonData.txn_status_code === '0300') {
                     console.log("Transaction successful (0300), calling handleCollectOnline");
-                    await handleCollectOnline(jsonData.txn_amt); // Call handleCollectOnline (without customerId argument)
+                    await handleCollectOnline(jsonData.txn_amt);
                 }
 
             } catch (jsonError) {
@@ -46,40 +45,33 @@ export default function Payments() {
     }, []);
 
     useEffect(() => {
-        const paymentHtmlUrl = 'http://192.168.1.13:3000/payments.html';
-        Linking.openURL(paymentHtmlUrl).catch(err => console.error("Failed to open payment URL:", err));
+        fetchPaymentResponseData();
+        // **No WebView URI loading needed now**
+    }, [fetchPaymentResponseData]);
 
-        fetchPaymentResponseData(); // Initial data fetch on component mount
 
-    }, [fetchPaymentResponseData]); // Dependency array with fetchPaymentResponseData
-
-    // REMOVED useEffect for fetching customerId from token at component level
-
-    const handleCollectOnline = useCallback(async (amount) => { //  customerId argument REMOVED
-        let currentCustomerId = null; // Declare customerId within the function
+    const handleCollectOnline = useCallback(async (amount) => {
+        let currentCustomerId = null;
 
         console.log("handleCollectOnline called with amount:", amount);
 
-        // **FETCH CUSTOMER ID INSIDE handleCollectOnline**
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
             if (!token) {
                 console.warn("Authentication token not found in handleCollectOnline.");
                 Alert.alert("Error", "Authentication token is missing. Cannot process payment.");
-                return; // Exit if no token
+                return;
             }
             const decoded = jwtDecode(token);
-            currentCustomerId = decoded.id; // Get customer ID
-            console.log("Customer ID fetched inside handleCollectOnline:", currentCustomerId); // Log fetched customerId
-            // setCustomerId(fetchedCustomerId); // NO NEED to set component-level state anymore
+            currentCustomerId = decoded.id;
+            console.log("Customer ID fetched inside handleCollectOnline:", currentCustomerId);
 
         } catch (tokenError) {
             console.error("Error fetching or decoding token in handleCollectOnline:", tokenError);
             Alert.alert("Error", "Failed to retrieve user information. Cannot process payment.");
-            setIsCollectingOnlinePayment(false); // Stop loading indicator in case of error
-            return; // Exit on token error
+            setIsCollectingOnlinePayment(false);
+            return;
         }
-
 
         if (isNaN(amount) || amount < 0) {
             console.log("Validation failed: Invalid amount");
@@ -87,7 +79,7 @@ export default function Payments() {
             return;
         }
 
-        if (!currentCustomerId) { // Use the locally fetched currentCustomerId
+        if (!currentCustomerId) {
             console.log("Validation failed: Customer ID missing (even after fetching)");
             Alert.alert("Error", "Customer information is missing. Cannot process payment.");
             return;
@@ -95,44 +87,84 @@ export default function Payments() {
 
         setIsCollectingOnlinePayment(true);
         try {
-            const backendURL = 'http://192.168.1.13:8090';
-            const apiUrl = `${backendURL}/collect_online?customerId=${currentCustomerId}`; // Use locally fetched customerId
-            console.log("Calling API URL:", apiUrl);
-
-            const response = await fetch(apiUrl, {
+            // ** 1. Fetch Payment Token from your Node.js Server API **
+            const tokenResponse = await fetch('http://192.168.1.13:8090/generate-payment-token', { // **IMPORTANT: Replace with your backend URL if different**
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ online: parseFloat(amount) }),
+                body: JSON.stringify({ amount: amount }), // Send payment amount to server
             });
 
-            console.log("API Response Status:", response.status, "OK:", response.ok);
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                const errorMessage = errorData?.message || `HTTP error! status: ${response.status}`;
-                console.error("API Error:", errorMessage, errorData);
+            if (!tokenResponse.ok) {
+                const errorData = await tokenResponse.json();
+                const errorMessage = errorData?.error || `Failed to fetch token: HTTP ${tokenResponse.status}`;
                 throw new Error(errorMessage);
             }
 
-            const successData = await response.json();
-            console.log("API Success:", successData);
-            Toast.show({
-                type: 'success',
-                text1: 'Payment Success',
-                text2: successData.message || "Online payment recorded successfully!",
-                position: 'bottom',
+            const tokenData = await tokenResponse.json();
+            const paymentToken = tokenData.token;
+            const merchantId = tokenData.merchantId;
+            const txnId = tokenData.txnId; // Get txnId from server response
+
+            console.log("Payment Token Received:", paymentToken);
+
+            // ** 2. Prepare reqJson (similar to before) **
+            const reqJson = {
+                "features": {
+                    "enableAbortResponse": true,
+                    "enableExpressPay": true,
+                    "enableInstrumentDeRegistration" : true,
+                    "enableMerTxnDetails": true,
+                    "enableNewWindowFlow": true // **IMPORTANT: Keep as true for Linking.openURL**
+                },
+                "consumerData": {
+                    "deviceId": "WEBSH2",
+                    "token": paymentToken, // **Use the token fetched from server!**
+                    "returnUrl": "http://192.168.1.13:8090/payment-response", // **IMPORTANT: Configure your deep link URL**
+                    "responseHandler": "handleResponse", // **Will not be directly used with Linking.openURL**
+                    "paymentMode": "all",
+                    "merchantLogoUrl": "https://www.paynimo.com/CompanyDocs/company-logo-vertical.png",
+                    "merchantId": merchantId, // Use merchantId from server response
+                    "currency": "INR",
+                    "consumerId": currentCustomerId, // Use fetched customerId
+                    "txnId": txnId, // Use txnId from server response
+                    "items": [{
+                        "itemId": "first",
+                        "amount": amount.toString(), // Use amount from handleCollectOnline, convert to string
+                        "comAmt": "0"
+                    }],
+                    "customStyle": {
+                        "PRIMARY_COLOR_CODE": "#45beaa",
+                        "SECONDARY_COLOR_CODE": "#FFFFFF",
+                        "BUTTON_COLOR_CODE_1": "#2d8c8c",
+                        "BUTTON_COLOR_CODE_2": "#FFFFFF"
+                    }
+                }
+            };
+
+            const reqJsonString = JSON.stringify(reqJson);
+            const params = new URLSearchParams();
+            params.append('reqJson', reqJsonString);
+            console.log("Payments.jsx - consumerData BEFORE URL:", reqJson.consumerData);
+            // Replace with your actual production server URL or proper local IP
+            const paymentUrl = `http://192.168.1.13:3000/payments?${params.toString()}`;
+            console.log("Opening Payment URL in Browser:", paymentUrl);
+            await Linking.openURL(paymentUrl).catch(err => {
+                console.error('Error opening URL:', err);
+                Alert.alert('Error', 'Could not open payment page. Please check your connection.');
             });
-            setRefreshData(prevState => !prevState); // Trigger refresh on success
 
         } catch (error) {
             console.error("Error in handleCollectOnline:", error);
-            Alert.alert("Payment Error", `Failed to record online payment: ${error.message}`);
+            Alert.alert("Payment Error", `Failed to initiate payment: ${error.message}`);
         } finally {
             setIsCollectingOnlinePayment(false);
         }
-    }, [setRefreshData]); // useCallback dependency array - only setRefreshData is needed
+    }, [setRefreshData]);
+
+
+    // ** No handleWebViewMessage function needed anymore **
 
 
     return (
@@ -160,6 +192,9 @@ export default function Payments() {
                     <Text style={styles.loadingText}>Loading payment data...</Text>
                 </View>
             )}
+
+            {/* ** WebView Container Removed ** */}
+
             <Toast ref={(ref) => Toast.setRef(ref)} />
         </ScrollView>
     );
@@ -187,4 +222,5 @@ const styles = StyleSheet.create({
     collectingIndicator: {
         marginTop: 20,
     },
+    // ** WebView Styles Removed **
 });
