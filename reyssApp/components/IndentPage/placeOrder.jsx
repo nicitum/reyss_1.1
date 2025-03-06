@@ -135,7 +135,7 @@ const PlaceOrderPage = ({ route }) => {
 
                             const productCategoryLower = product.category.trim().toLowerCase();
 
-                            if (productCategoryLower.includes("Others")) {
+                            if (productCategoryLower.includes("others")) {
                                 return false;
                             }
 

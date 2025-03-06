@@ -12,6 +12,8 @@ import CollectCashPage from './CollectCash';
 import CreditLimitPage from './CreditLimit';
 import AdminAssignedUsersPage from '../route_mgr/AdminAssignedUsers';
 import DailyOrdersReport from './DailyOrdersReport';
+import Remarks from './Remarks';
+import PaynimoCheckoutWebView from './test';
 
 const Stack = createStackNavigator();
 
@@ -91,6 +93,22 @@ const ProfileStack = () => {
         name="DailyOrdersReport" 
         component={DailyOrdersReport} 
         options={{ title: 'DailyOrdersReport' }} 
+        
+      />
+
+
+      
+      <Stack.Screen 
+        name="Remarks" 
+        component={Remarks} 
+        options={{ title: 'Remarks'}} 
+        
+      />
+
+      <Stack.Screen 
+        name="Test" 
+        component={PaynimoCheckoutWebView} 
+        options={{ title: 'Test'}} 
         
       />
 

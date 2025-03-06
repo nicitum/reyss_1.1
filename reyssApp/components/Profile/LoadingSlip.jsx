@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback} from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
     View,
     Text,
@@ -8,7 +8,7 @@ import {
     ActivityIndicator,
     Platform,
     TouchableOpacity,
-    ToastAndroid, // Keep ToastAndroid for Android
+    ToastAndroid,
     PermissionsAndroid,
     Linking
 } from "react-native";
@@ -22,7 +22,6 @@ import moment from 'moment';
 import * as XLSX from 'xlsx';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-
 
 const LOADING_SLIP_DIR_URI_KEY = 'loadingSlipDirectoryUri';
 
@@ -54,9 +53,6 @@ const LoadingSlipPage = () => {
         };
         loadSavedState();
     }, []);
-
-
-
 
     const fetchAssignedUsers = useCallback(async (currentAdminId, userAuthToken) => {
         try {
@@ -118,9 +114,6 @@ const LoadingSlipPage = () => {
         }
     }, []);
 
-
-  
-
     const save = async (uri, filename, mimetype, reportType) => {
         if (Platform.OS === "android") {
             try {
@@ -166,7 +159,6 @@ const LoadingSlipPage = () => {
         }
     };
 
-
     const generateExcelReport = async (productsData, reportType, routeName = '') => {
         if (!productsData || productsData.length === 0) {
             Alert.alert("No Products", "No products to include in the loading slip.");
@@ -177,13 +169,12 @@ const LoadingSlipPage = () => {
         try {
             const wb = XLSX.utils.book_new();
     
-            // Calculate totals
-            let totalQuantity = 0; // Total for 'Quantity in base units (eaches)' if needed
+            let totalQuantity = 0;
             let totalBaseUnitQuantity = 0;
             let totalCrates = 0;
     
             productsData.forEach(product => {
-                totalQuantity += product.quantity; // Summing 'eaches' quantity - optional
+                totalQuantity += product.quantity;
                 totalBaseUnitQuantity += parseFloat(product.baseUnitQuantity);
                 totalCrates += product.crates;
             });
@@ -198,9 +189,8 @@ const LoadingSlipPage = () => {
                     product.baseUnitQuantity,
                     product.crates
                 ]),
-                ["Totals",  totalQuantity.toFixed(2), totalBaseUnitQuantity.toFixed(2), totalCrates] // Totals row
+                ["Totals", totalQuantity.toFixed(2), totalBaseUnitQuantity.toFixed(2), totalCrates]
             ];
-    
     
             const ws = XLSX.utils.aoa_to_sheet(wsData);
             XLSX.utils.book_append_sheet(wb, ws, `${reportType} Data`);
@@ -210,7 +200,6 @@ const LoadingSlipPage = () => {
     
             const filename = `${reportType.replace(/\s/g, '')}-Route-${routeName}.xlsx`;
             const mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    
     
             if (Platform.OS === 'web') {
                 const blob = new Blob([wbout], { type: mimetype });
@@ -232,7 +221,6 @@ const LoadingSlipPage = () => {
                 await FileSystem.writeAsStringAsync(fileUri, base64Workbook, {
                     encoding: FileSystem.EncodingType.Base64
                 });
-    
     
                 if (Platform.OS === 'android') {
                     save(fileUri, filename, mimetype, reportType);
@@ -257,8 +245,6 @@ const LoadingSlipPage = () => {
                     }
                 }
             }
-    
-    
         } catch (e) {
             console.error("Excel Generation Error:", e);
             if (Platform.OS === 'android') {
@@ -272,26 +258,25 @@ const LoadingSlipPage = () => {
         }
     };
 
-    const generateDeliveryExcelReport = async (usersForRoute, routeName) => { // Added usersForRoute and routeName
+    const generateDeliveryExcelReport = async (usersForRoute, routeName) => {
         const reportType = 'Delivery Slip';
         setLoading(true);
         try {
             const wb = XLSX.utils.book_new();
-            const deliverySlipData = await createDeliverySlipDataForExcelForRoute(usersForRoute); //Pass usersForRoute
+            const deliverySlipData = await createDeliverySlipDataForExcelForRoute(usersForRoute);
             const ws = XLSX.utils.aoa_to_sheet([
-                [`${reportType}`]
-                [`Route: ${routeName}`], // Slip Title now includes Route
-                //[`Route: ${routeName}`], // No separate Route line needed as Route is in title
+                [`${reportType}`],
+                [`Route: ${routeName}`],
                 [],
-                deliverySlipData[2], // Headers (Items, Customer Names)
-                ...deliverySlipData.slice(3) // Product rows
+                deliverySlipData[2],
+                ...deliverySlipData.slice(3)
             ]);
             XLSX.utils.book_append_sheet(wb, ws, `${reportType}`);
 
             const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
             const base64Workbook = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
 
-            const filename = `${reportType.replace(/\s/g, '')}-Route-${routeName}.xlsx`; // Filename now includes Route
+            const filename = `${reportType.replace(/\s/g, '')}-Route-${routeName}.xlsx`;
             const mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
             if (Platform.OS === 'web') {
@@ -340,7 +325,6 @@ const LoadingSlipPage = () => {
                     }
                 }
             }
-
         } catch (e) {
             console.error(`${reportType} Excel Generation Error:`, e);
             if (Platform.OS === 'android') {
@@ -354,16 +338,16 @@ const LoadingSlipPage = () => {
         }
     };
 
-    const createDeliverySlipDataForExcelForRoute = async (usersForRoute) => { // Modified to accept usersForRoute
+    const createDeliverySlipDataForExcelForRoute = async (usersForRoute) => {
         const orderMap = new Map();
         const allProducts = new Set();
         const customerNames = [];
 
-        usersForRoute.forEach(user => { // Use usersForRoute
+        usersForRoute.forEach(user => {
             const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
             if (order) {
                 customerNames.push(user.name);
-                orderMap.set(user.cust_id, { name: user.name, orderId: order.id, products: [], route: user.route }); // Include route here
+                orderMap.set(user.cust_id, { name: user.name, orderId: order.id, products: [], route: user.route });
             }
         });
 
@@ -393,7 +377,7 @@ const LoadingSlipPage = () => {
             const productRow = [productName];
             customerNames.forEach(customerName => {
                 let quantity = 0;
-                const customerOrder = orderMap.get(usersForRoute.find(u => u.name === customerName)?.cust_id); // Use usersForRoute
+                const customerOrder = orderMap.get(usersForRoute.find(u => u.name === customerName)?.cust_id);
                 if (customerOrder && customerOrder.products) {
                     const productInOrder = customerOrder.products.find(p => p.name === productName);
                     quantity = productInOrder ? productInOrder.quantity : 0;
@@ -448,7 +432,7 @@ const LoadingSlipPage = () => {
                         } else if (lowerLastPart.includes('gm') || lowerLastPart.includes('gms') || lowerLastPart.includes('g')) {
                             quantityValue = parseFloat(nameParts[nameParts.length - 2]);
                             unit = 'gm';
-                        }  else if (lowerLastPart.includes('ml')) {
+                        } else if (lowerLastPart.includes('ml')) {
                             quantityValue = parseFloat(nameParts[nameParts.length - 2]);
                             unit = 'ml';
                         } else if (lowerLastPart === 'gms' && lowerSecondLastPart === '1000') {
@@ -472,7 +456,6 @@ const LoadingSlipPage = () => {
     
                         const crates = Math.floor(baseUnitQuantity / 12);
                         console.log("crates:", crates);
-    
     
                         const currentProductInfo = consolidatedProducts.get(product.name);
                         if (currentProductInfo) {
@@ -509,20 +492,17 @@ const LoadingSlipPage = () => {
         return productListForExcel;
     };
 
-
-    // New function to group users by route
     const groupUsersByRoute = (usersWithOrders) => {
         const routesMap = new Map();
         usersWithOrders.forEach(user => {
-            const route = user.route || 'Unrouted'; // Handle users without route?
+            const route = user.route || 'Unrouted';
             if (!routesMap.has(route)) {
                 routesMap.set(route, []);
             }
             routesMap.get(route).push(user);
         });
-        return routesMap; // Returns Map: { route1: [users], route2: [users], ... }
+        return routesMap;
     };
-
 
     useEffect(() => {
         const loadData = async () => {
@@ -565,7 +545,6 @@ const LoadingSlipPage = () => {
         }
     }, [assignedUsers, adminOrders, orderTypeFilter]);
 
-
     useEffect(() => {
         navigation.setOptions({
             headerRight: () => (
@@ -575,16 +554,46 @@ const LoadingSlipPage = () => {
                             marginRight: 10,
                             padding: 10,
                             borderRadius: 8,
-                            backgroundColor: '#FFD700' // Yellow for Loading Slip
+                            backgroundColor: '#FFD700'
                         }}
                         onPress={async () => {
-                            if (adminUsersWithOrdersToday.length > 0 ) {
-                                const routesMap = groupUsersByRoute(adminUsersWithOrdersToday); // Group users by route
-                                for (const [routeName, usersForRoute] of routesMap.entries()) { // Iterate through routes
-                                    const loadingSlipDataForRoute = await createLoadingSlipDataForExcelForRoute(usersForRoute, routeName); // Get data for each route
-                                    generateExcelReport(loadingSlipDataForRoute, 'Loading Slip', routeName); // Generate report for each route
+                            if (adminUsersWithOrdersToday.length > 0) {
+                                const routesMap = groupUsersByRoute(adminUsersWithOrdersToday);
+                                for (const [routeName, usersForRoute] of routesMap.entries()) {
+                                    const loadingSlipDataForRoute = await createLoadingSlipDataForExcelForRoute(usersForRoute);
+                                    await generateExcelReport(loadingSlipDataForRoute, 'Loading Slip', routeName);
+
+                                    // Update loading slip status for each order in the route
+                                    for (const user of usersForRoute) {
+                                        const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
+                                        if (order) {
+                                            try {
+                                                const token = await AsyncStorage.getItem("userAuthToken");
+                                                const response = await fetch(`http://${ipAddress}:8090/update-loading-slip-status`, {
+                                                    method: 'POST',
+                                                    headers: {
+                                                        "Authorization": `Bearer ${token}`,
+                                                        "Content-Type": "application/json",
+                                                    },
+                                                    body: JSON.stringify({ orderId: order.id })
+                                                });
+
+                                                if (!response.ok) {
+                                                    console.error(`Failed to update loading slip status for order ${order.id}. Status: ${response.status}`);
+                                                    Alert.alert("Error", `Failed to update loading slip status for order ${order.id}`);
+                                                    continue;
+                                                }
+
+                                                const responseData = await response.json();
+                                                console.log(`Loading slip status updated for order ${order.id}:`, responseData.message);
+                                            } catch (error) {
+                                                console.error("Error updating loading slip status:", error);
+                                                Alert.alert("Error", "Failed to update loading slip status due to a network or server error.");
+                                            }
+                                        }
+                                    }
                                 }
-                                Alert.alert("Slips Generated", "Loading Slips generated for each route.");
+                                Alert.alert("Slips Generated", "Loading Slips generated and statuses updated for each route.");
                             } else {
                                 Alert.alert("No Orders", "No orders available to generate loading slips for the current filter.");
                             }
@@ -597,16 +606,15 @@ const LoadingSlipPage = () => {
                             marginRight: 15,
                             padding: 10,
                             borderRadius: 8,
-                            backgroundColor: '#2196F3' // Blue for Delivery Slip
+                            backgroundColor: '#2196F3'
                         }}
                         onPress={async () => {
-                            if (adminUsersWithOrdersToday.length > 0 ) {
-                                const routesMap = groupUsersByRoute(adminUsersWithOrdersToday); // Group users by route
-                                for (const [routeName, usersForRoute] of routesMap.entries()) { // Iterate through routes
-                                    generateDeliveryExcelReport(usersForRoute, routeName); // Generate Delivery Slip for each route - pass usersForRoute and routeName
+                            if (adminUsersWithOrdersToday.length > 0) {
+                                const routesMap = groupUsersByRoute(adminUsersWithOrdersToday);
+                                for (const [routeName, usersForRoute] of routesMap.entries()) {
+                                    generateDeliveryExcelReport(usersForRoute, routeName);
                                 }
                                 Alert.alert("Slips Generated", "Delivery Slips generated for each route.");
-
                             } else {
                                 Alert.alert("No Orders", "No orders available to generate delivery slips for the current filter.");
                             }
@@ -618,7 +626,6 @@ const LoadingSlipPage = () => {
             ),
         });
     }, [navigation, adminOrders, adminUsersWithOrdersToday, orderTypeFilter]);
-
 
     const renderItem = ({ item }) => {
         const orderForUser = adminOrders.find(order => order.customer_id === item.cust_id);
@@ -636,8 +643,6 @@ const LoadingSlipPage = () => {
 
     return (
         <View style={styles.container}>
-
-
             <View style={styles.filterContainer}>
                 <Text style={styles.filterLabel}>Filter Order Type:</Text>
                 <View style={styles.pickerWrapper}>
@@ -652,7 +657,6 @@ const LoadingSlipPage = () => {
                 </View>
             </View>
 
-            {/* Column Headers */}
             <View style={styles.columnHeader}>
                 <Text style={[styles.columnHeaderText, { flex: 1.1 }]}>Name</Text>
                 <Text style={[styles.columnHeaderText, { flex: 1.6 }]}>Route</Text>
@@ -671,7 +675,7 @@ const LoadingSlipPage = () => {
                     ListEmptyComponent={() => <Text style={styles.emptyListText}>No {orderTypeFilter} orders today.</Text>}
                 />
             )}
-             {loading && <View style={styles.loadingOverlay}>
+            {loading && <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="large" color="#FDDA0D" />
                 <Text style={styles.loadingText}>Generating Slip...</Text>
             </View>}

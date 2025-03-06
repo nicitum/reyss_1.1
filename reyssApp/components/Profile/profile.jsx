@@ -218,17 +218,28 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                         
                     </TouchableOpacity>
                     
-
-                    
                     )}
                     {userRole === "superadmin" && (
                     <TouchableOpacity
                         style={styles.subMenuItem}
                         onPress={() => {
-                        navigation.navigate("DailyOrdersReport");
+                        navigation.navigate("Remarks");
                         }}
                     >
-                        <Text style={styles.subMenuText}>Daily Orders Report</Text>
+                        <Text style={styles.subMenuText}>Remarks</Text>
+                        
+                    </TouchableOpacity>
+                    
+                    )}
+
+                    {userRole === "superadmin" && (
+                    <TouchableOpacity
+                        style={styles.subMenuItem}
+                        onPress={() => {
+                        navigation.navigate("Test");
+                        }}
+                    >
+                        <Text style={styles.subMenuText}>Test</Text>
                         
                     </TouchableOpacity>
                     

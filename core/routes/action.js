@@ -1149,6 +1149,60 @@ router.post('/collect_online', async (req, res) => {
 });
 
 
+//remarks handling.
+
+// API endpoint to update remarks in the remarks table
+router.post("/remarks-update", async (req, res) => {
+    try {
+        const { customer_id, order_id, remarks } = req.body;
+
+        // Validate input
+        if (!customer_id || !order_id || !remarks) {
+            return res.status(400).json({ message: "customer_id, order_id, and remarks are required" });
+        }
+
+        // SQL INSERT query to add a new remark
+        const query = "INSERT INTO remarks (customer_id, order_id, remarks) VALUES (?, ?, ?)";
+        const values = [customer_id, order_id, remarks];
+
+        // Execute the query
+        const result = await executeQuery(query, values);
+
+        if (result.affectedRows > 0) {
+            return res.status(200).json({ message: "Remarks updated successfully" }); // "Updated" is used for consistency with original example, but "added" or "saved" might be more accurate for an INSERT operation. Consider changing the message if needed for clarity.
+        } else {
+            return res.status(400).json({ message: "Failed to add remarks. Please check customer_id and order_id." }); // 400 status because the request itself might be valid, but the action failed due to data issue. Could also be 500 depending on error details from DB.
+        }
+    } catch (error) {
+        console.error("Error updating remarks:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message }); // Include error.message for more detailed debugging in development. Remove or redact in production.
+    }
+});
+
+
+//fetch remarks 
+
+
+
+router.get("/fetch-remarks", async (req, res) => {
+    try {
+        // SQL SELECT query to fetch all remarks
+        const query = "SELECT * FROM remarks";
+
+        // Execute the query
+        const remarks = await executeQuery(query);
+
+        // Return the fetched remarks in the response
+        return res.status(200).json({
+            message: "Remarks fetched successfully",
+            remarks: remarks // Sending back the fetched remarks data
+        });
+
+    } catch (error) {
+        console.error("Error fetching remarks:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message }); // Include error.message for more detailed debugging in development. Remove or redact in production.
+    }
+});
 module.exports = router;
 
 
