@@ -232,20 +232,20 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     
                     )}
 
+
                     {userRole === "superadmin" && (
                     <TouchableOpacity
                         style={styles.subMenuItem}
                         onPress={() => {
-                        navigation.navigate("Test");
+                        navigation.navigate("test");
                         }}
                     >
-                        <Text style={styles.subMenuText}>Test</Text>
+                        <Text style={styles.subMenuText}>test</Text>
                         
                     </TouchableOpacity>
                     
-
-                    
                     )}
+
                 </View>
                 )}
 

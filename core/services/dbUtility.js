@@ -208,47 +208,107 @@ const createOrder = async (
   }
 };
 
-const addOrderProducts = async (orderId, products) => {
+
+const getCustomerProductPrice = async (customerId, productId) => {
   try {
-    const availableProducts = await getProductss();
+      const query = "SELECT customer_price FROM customer_product_prices WHERE customer_id = ? AND product_id = ?";
+      const results = await executeQuery(query, [customerId, productId]);
 
-    const orderProductQueries = products.map((product) => {
-      const productId = product.product_id || product.id; // ✅ Handle both cases
-      const { quantity } = product;
+      console.log("getCustomerProductPrice - Results from executeQuery:", results); // Keep this log for verification
 
-      if (!productId) {
-        throw new Error(`Product with ID undefined received.`);
+      // *** MODIFIED CONDITION - Check length of 'results' array directly ***
+      if (results.length > 0) {
+          return { customer_price: parseFloat(results[0].customer_price) }; // Access first element of the array directly
+      } else {
+          return null;
       }
-
-      const productData = availableProducts.find((p) => p.id === Number(productId));
-      if (!productData) {
-        throw new Error(`Product with ID ${productId} not found in available products.`);
-      }
-
-      const price = productData.discountPrice;
-
-      return {
-        query: `
-          INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
-          VALUES (?, ?, ?, ?, ?, ?);
-        `,
-        values: [
-          orderId,
-          productId, // ✅ Ensuring correct product ID is used
-          quantity,
-          price,
-          productData.name,
-          productData.category,
-        ],
-      };
-    });
-
-    for (const query of orderProductQueries) {
-      await executeQuery(query.query, query.values);
-    }
   } catch (error) {
-    console.error("Error in addOrderProducts:", error);
-    throw new Error("Failed to add products to the order.");
+      console.error("Database error in getCustomerProductPrice:", error);
+      throw error;
+  }
+};
+
+
+const updateOrderTotalAmount = async (orderId, recalculatedTotalAmount) => {
+  try {
+      const query = `
+          UPDATE orders
+          SET total_amount = ?
+          WHERE id = ?;
+      `;
+      await executeQuery(query, [recalculatedTotalAmount, orderId]);
+      console.log(`updateOrderTotalAmount - Order ID ${orderId} total_amount updated to: ${recalculatedTotalAmount}`);
+  } catch (error) {
+      console.error("Error updating order total amount:", error);
+      throw error; // Or handle error as needed
+  }
+};
+const addOrderProducts = async (customerId, orderId, products) => {
+  try {
+      const availableProducts = await getProductss();
+      console.log("addOrderProducts - Available products fetched:", availableProducts); // Log available products
+
+      const orderProductQueries = products.map(async (product) => {
+          const productId = product.product_id || product.id;
+          const { quantity } = product;
+
+          console.log(`addOrderProducts - Processing product: productId=<span class="math-inline">\{productId\}, customerId\=</span>{customerId}`);
+
+          if (!productId) {
+              throw new Error(`Product with ID undefined received.`);
+          }
+
+          const productData = availableProducts.find((p) => p.id === Number(productId));
+          console.log("addOrderProducts - Found product data from availableProducts:", productData); // Log productData
+          if (!productData) {
+              throw new Error(`Product with ID ${productId} not found in available products.`);
+          }
+
+          let effectivePrice = null;
+
+          console.log(`addOrderProducts - Calling getCustomerProductPrice for productId=<span class="math-inline">\{productId\}, customerId\=</span>{customerId}`);
+          try {
+              const customerPriceData = await getCustomerProductPrice(customerId, productId);
+              console.log(`addOrderProducts - Result from getCustomerProductPrice:`, customerPriceData); // Log customerPriceData
+              if (customerPriceData && customerPriceData.customer_price !== null) {
+                  effectivePrice = customerPriceData.customer_price;
+              }
+          } catch (customerPriceError) {
+              console.error("addOrderProducts - Error fetching customer_price:", customerPriceError);
+          }
+
+          if (effectivePrice === null) {
+              effectivePrice = productData.discountPrice;
+              console.log(`addOrderProducts - Fallback to discountPrice: ${effectivePrice}`);
+          }
+          console.log(`addOrderProducts - Effective Price used for product ${productId}: ${effectivePrice}`);
+
+          return {
+              query: `
+                  INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
+                  VALUES (?, ?, ?, ?, ?, ?);
+              `,
+              values: [
+                  orderId,
+                  productId,
+                  quantity,
+                  effectivePrice,
+                  productData.name,
+                  productData.category,
+              ],
+          };
+      });
+
+      const queries = await Promise.all(orderProductQueries);
+      console.log("addOrderProducts - Prepared queries:", queries); // Log prepared queries
+
+      for (const query of queries) {
+          await executeQuery(query.query, query.values);
+      }
+      console.log("addOrderProducts - Queries executed successfully"); // Log success
+  } catch (error) {
+      console.error("Error in addOrderProducts:", error);
+      throw new Error("Failed to add products to the order.");
   }
 };
 
@@ -922,6 +982,8 @@ module.exports = {
   getOrdersByCustomerId,
   getProducts,
   getUserById,
+  getCustomerProductPrice,
+  updateOrderTotalAmount,
   getOrder,
   getProductById,
   lastPMOrder,

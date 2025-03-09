@@ -1,37 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, ScrollView, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { jwtDecode } from 'jwt-decode';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
-const TransactionsPage = () => {
+const AdminTransactions = () => {
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [selectedDate, setSelectedDate] = useState(null); // For date filter
-    const [isDatePickerVisible, setDatePickerVisibility] = useState(false); // Date picker modal visibility
-    const [paymentFilter, setPaymentFilter] = useState('All'); // Filter: All, Cash, Online
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
+    const [paymentFilter, setPaymentFilter] = useState('All');
 
-    // Fetch customer_id and payment transactions
+    // Fetch all payment transactions and customer names
     const fetchTransactions = async () => {
         try {
-            // Get customer_id from JWT token
-            const token = await AsyncStorage.getItem("userAuthToken");
-            if (!token) {
-                throw new Error("Authentication token not found");
-            }
-            const decoded = jwtDecode(token);
-            const fetchedCustomerId = decoded.id;
-            console.log("Fetched Customer ID:", fetchedCustomerId);
-
-            // Build query params
-            let url = `http://192.168.1.13:8090/fetch-payment-transactions?customer_id=${fetchedCustomerId}`;
+            // Build query params for transactions
+            let url = `http://192.168.1.13:8090/fetch-all-payment-transactions`;
             if (selectedDate) {
                 const formattedDate = selectedDate.toISOString().split('T')[0]; // YYYY-MM-DD
-                url += `&date=${formattedDate}`;
+                url += `?date=${formattedDate}`;
             }
             if (paymentFilter !== 'All') {
-                url += `&payment_method=${paymentFilter.toLowerCase()}`;
+                url += selectedDate ? `&payment_method=${paymentFilter.toLowerCase()}` : `?payment_method=${paymentFilter.toLowerCase()}`;
             }
 
             // Fetch transactions from API
@@ -49,7 +38,38 @@ const TransactionsPage = () => {
 
             const data = await response.json();
             console.log("Transactions fetched:", data.transactions);
-            setTransactions(data.transactions);
+
+            // Fetch customer names for each transaction
+            const transactionsWithNames = await Promise.all(
+                data.transactions.map(async (transaction) => {
+                    try {
+                        const nameResponse = await fetch(
+                            `http://192.168.1.13:8090/fetch-names?customer_id=${transaction.customer_id}`,
+                            {
+                                method: 'GET',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                            }
+                        );
+
+                        if (!nameResponse.ok) {
+                            const errorData = await nameResponse.json();
+                            console.warn(`No name found for customer_id ${transaction.customer_id}: ${errorData.message}`);
+                            return { ...transaction, customerName: 'Unknown' };
+                        }
+
+                        const nameData = await nameResponse.json();
+                        return { ...transaction, customerName: nameData.name };
+                    } catch (err) {
+                        console.error(`Error fetching name for customer_id ${transaction.customer_id}:`, err);
+                        return { ...transaction, customerName: 'Unknown' };
+                    }
+                })
+            );
+
+            console.log("Transactions with names:", transactionsWithNames);
+            setTransactions(transactionsWithNames);
             setError(null);
         } catch (err) {
             console.error("Error fetching transactions:", err);
@@ -111,7 +131,7 @@ const TransactionsPage = () => {
                 onCancel={hideDatePicker}
             />
 
-            <Text style={styles.headerText}>Your Payment Transactions</Text>
+            <Text style={styles.headerText}>All Payment Transactions</Text>
 
             {loading ? (
                 <View style={styles.loadingContainer}>
@@ -127,7 +147,7 @@ const TransactionsPage = () => {
                     {/* Table Header */}
                     <View style={styles.tableRow}>
                         <Text style={styles.tableHeader}>Trans. ID</Text>
-                        <Text style={styles.tableHeader}>Cust. ID</Text>
+                        <Text style={styles.tableHeader}>Customer Name</Text>
                         <Text style={styles.tableHeader}>Method</Text>
                         <Text style={styles.tableHeader}>Amount</Text>
                         <Text style={styles.tableHeader}>Date</Text>
@@ -136,7 +156,7 @@ const TransactionsPage = () => {
                     {transactions.map((transaction, index) => (
                         <View key={index} style={styles.tableRow}>
                             <Text style={styles.tableCell}>{transaction.transaction_id}</Text>
-                            <Text style={styles.tableCell}>{transaction.customer_id}</Text>
+                            <Text style={styles.tableCell}>{transaction.customerName}</Text>
                             <Text style={styles.tableCell}>{transaction.payment_method}</Text>
                             <Text style={styles.tableCell}>₹{parseFloat(transaction.payment_amount).toFixed(2)}</Text>
                             <Text style={styles.tableCell}>
@@ -240,4 +260,4 @@ const styles = StyleSheet.create({
     },
 });
 
-export default TransactionsPage;
+export default AdminTransactions;

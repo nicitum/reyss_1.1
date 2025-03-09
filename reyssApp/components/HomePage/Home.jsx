@@ -9,7 +9,9 @@ import {
     Image,
     Alert,
     ScrollView,
-    ActivityIndicator // Import ActivityIndicator for loading state
+    ActivityIndicator,
+    Modal,
+    TextInput,
 } from "react-native";
 import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 import { ipAddress } from "../../urls";
@@ -29,10 +31,11 @@ const HomePage = () => {
     const [userDetails, setUserDetails] = useState(null);
     const [lastOrderDetails, setLastOrderDetails] = useState(null);
     const [creditLimit, setCreditLimit] = useState(null);
-    const [pendingAmount, setPendingAmount] = useState('0'); // State for pending amount, initialize to '0'
-    const [isPendingAmountLoading, setIsPendingAmountLoading] = useState(false); // Loading state for pending amount
+    const [pendingAmount, setPendingAmount] = useState('0');
+    const [isPendingAmountLoading, setIsPendingAmountLoading] = useState(false);
+    const [modalVisible, setModalVisible] = useState(false); // Modal visibility
+    const [partialAmount, setPartialAmount] = useState(''); // Partial payment input
     const navigation = useNavigation();
-
 
     // Function to check credit limit
     const checkCreditLimit = useCallback(async () => {
@@ -63,52 +66,46 @@ const HomePage = () => {
                 console.error("Error fetching credit limit:", creditLimitResponse.status, creditLimitResponse.statusText);
                 return null;
             }
-
         } catch (error) {
             console.error("Error checking credit limit:", error);
             return null;
         }
     }, [navigation]);
 
+    // Function to fetch pending amount
+    const fetchPendingAmount = useCallback(async () => {
+        setIsPendingAmountLoading(true);
+        try {
+            const userAuthToken = await checkTokenAndRedirect(navigation);
+            if (!userAuthToken) {
+                console.error("Authentication Error: Authorization token missing for pending amount.");
+                setIsPendingAmountLoading(false);
+                return;
+            }
+            const decodedToken = jwtDecode(userAuthToken);
+            const customerId = decodedToken.id;
 
-   // Function to fetch pending amount
-   const fetchPendingAmount = useCallback(async () => {
+            const amountDueResponse = await fetch(`http://${ipAddress}:8090/collect_cash?customerId=${customerId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
 
-    setIsPendingAmountLoading(true); // Start loading
-    try {
-        const userAuthToken = await checkTokenAndRedirect(navigation);
-        if (!userAuthToken) {
-            console.error("Authentication Error: Authorization token missing for pending amount.");
-            setIsPendingAmountLoading(false);
-            return;
-        }
-        const decodedToken = jwtDecode(userAuthToken);
-        const customerId = decodedToken.id;
-
-        // Corrected to use /collect_cash endpoint, POST method, and customerId as query parameter
-        const amountDueResponse = await fetch(`http://${ipAddress}:8090/collect_cash?customerId=${customerId}`, {
-            method: 'POST', // Using POST method
-            headers: {
-                'Content-Type': 'application/json', // Setting Content-Type header
-            },
-        });
-
-        if (amountDueResponse.ok) {
-            const amountDueData = await amountDueResponse.json();
-            // Extract amountDue from the response, it should be directly available as per the API code
-            setPendingAmount(amountDueData.amountDue !== undefined ? amountDueData.amountDue.toString() : '0');
-        } else {
-            console.error("Failed to fetch pending amount using /collect_cash:", amountDueResponse.status, amountDueResponse.statusText);
+            if (amountDueResponse.ok) {
+                const amountDueData = await amountDueResponse.json();
+                setPendingAmount(amountDueData.amountDue !== undefined ? amountDueData.amountDue.toString() : '0');
+            } else {
+                console.error("Failed to fetch pending amount using /collect_cash:", amountDueResponse.status, amountDueResponse.statusText);
+                setPendingAmount('Error');
+            }
+        } catch (error) {
+            console.error("Error fetching pending amount using /collect_cash:", error);
             setPendingAmount('Error');
+        } finally {
+            setIsPendingAmountLoading(false);
         }
-
-    } catch (error) {
-        console.error("Error fetching pending amount using /collect_cash:", error);
-        setPendingAmount('Error');
-    } finally {
-        setIsPendingAmountLoading(false);
-    }
-}, [navigation]);
+    }, [navigation]);
 
     // Back button handler
     const handleBackButton = useCallback(() => {
@@ -174,11 +171,9 @@ const HomePage = () => {
             setUserDetails(userDetailsData.userDetails);
             setLastOrderDetails(userDetailsData.latestOrder);
         }
-        // Fetch credit limit
         const creditLimitValue = await checkCreditLimit();
         setCreditLimit(creditLimitValue);
-        // Fetch pending amount
-        await fetchPendingAmount(); // Fetch pending amount here as part of initial data load
+        await fetchPendingAmount();
         setIsLoading(false);
     }, [userDetailsData1, checkCreditLimit, fetchPendingAmount]);
 
@@ -195,7 +190,30 @@ const HomePage = () => {
         }, [fetchData, handleBackButton])
     );
 
-    const { customerName, customerID, route} = userDetails || {};
+    // Handle Full Payment
+    const handleFullPayment = () => {
+        const parsedPending = parseFloat(pendingAmount);
+        if (isNaN(parsedPending) || parsedPending <= 0) {
+            Alert.alert("Error", "No valid pending amount to pay.");
+            return;
+        }
+        setModalVisible(false);
+        navigation.navigate("Payments", { amount: parsedPending });
+    };
+
+    // Handle Partial Payment
+    const handlePartialPayment = () => {
+        const parsedAmount = parseFloat(partialAmount);
+        if (isNaN(parsedAmount) || parsedAmount < 0) {
+            Alert.alert("Invalid Amount", "Please enter a positive number.");
+            return;
+        }
+        setModalVisible(false);
+        setPartialAmount(''); // Reset input
+        navigation.navigate("Payments", { amount: parsedAmount });
+    };
+
+    const { customerName, customerID, route } = userDetails || {};
     const { lastIndentDate, totalAmount, orderType, quantity } = lastOrderDetails || {};
 
     return (
@@ -252,15 +270,70 @@ const HomePage = () => {
                         <Text style={styles.cardTitle}>Amount Pending</Text>
                         <View style={styles.amountRow}>
                             {isPendingAmountLoading ? (
-                                <ActivityIndicator size="small" color="#e65100" /> // Loading indicator inside Amount Pending card
+                                <ActivityIndicator size="small" color="#e65100" />
                             ) : (
                                 <Text style={styles.amountText}>₹ {pendingAmount === 'Error' ? 'Error' : pendingAmount}</Text>
                             )}
-                            <TouchableOpacity style={styles.payButton}>
+                            <TouchableOpacity
+                                style={styles.payButton}
+                                onPress={() => setModalVisible(true)} // Show modal on click
+                            >
                                 <Text style={styles.payButtonText}>Pay Now</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
+
+                    {/* Payment Modal */}
+                    <Modal
+                        animationType="slide"
+                        transparent={true}
+                        visible={modalVisible}
+                        onRequestClose={() => setModalVisible(false)}
+                    >
+                        <View style={styles.modalOverlay}>
+                            <View style={styles.modalContent}>
+                                <Text style={styles.modalTitle}>Choose Payment Option</Text>
+                                
+                                {/* Full Payment Option */}
+                                <TouchableOpacity
+                                    style={styles.modalOptionButton}
+                                    onPress={handleFullPayment}
+                                >
+                                    <Text style={styles.modalOptionText}>Full Payment (₹ {pendingAmount})</Text>
+                                </TouchableOpacity>
+
+                                {/* Partial Payment Option */}
+                                <Text style={styles.modalSubtitle}>Partial Payment</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Enter amount"
+                                    keyboardType="numeric"
+                                    value={partialAmount}
+                                    onChangeText={(text) => {
+                                        const filteredText = text.replace(/[^0-9.]/g, ''); // Allow numbers and decimals
+                                        setPartialAmount(filteredText);
+                                    }}
+                                />
+                                <TouchableOpacity
+                                    style={styles.modalPayButton}
+                                    onPress={handlePartialPayment}
+                                >
+                                    <Text style={styles.modalButtonText}>Pay</Text>
+                                </TouchableOpacity>
+
+                                {/* Cancel Button */}
+                                <TouchableOpacity
+                                    style={styles.modalCancelButton}
+                                    onPress={() => {
+                                        setModalVisible(false);
+                                        setPartialAmount(''); // Reset input on cancel
+                                    }}
+                                >
+                                    <Text style={styles.modalButtonText}>Cancel</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </Modal>
 
                     {/* Last Order Details Card */}
                     <View style={styles.card}>
@@ -468,7 +541,7 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
         marginRight: 10,
     },
-    loadingContainer: { // Style for loading indicator overlay
+    loadingContainer: {
         position: 'absolute',
         top: 0,
         bottom: 0,
@@ -476,7 +549,79 @@ const styles = StyleSheet.create({
         right: 0,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.7)', // Semi-transparent white background
+        backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    },
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    modalContent: {
+        width: 300,
+        padding: 20,
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        alignItems: 'center',
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 15,
+    },
+    modalSubtitle: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#555',
+        marginTop: 15,
+        marginBottom: 10,
+    },
+    modalOptionButton: {
+        backgroundColor: '#28a745',
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        width: '100%',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    modalOptionText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    input: {
+        width: '100%',
+        padding: 10,
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 5,
+        marginBottom: 15,
+        fontSize: 16,
+    },
+    modalPayButton: {
+        backgroundColor: '#FDDA0D',
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        width: '100%',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    modalCancelButton: {
+        backgroundColor: '#dc3545',
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        width: '100%',
+        alignItems: 'center',
+    },
+    modalButtonText: {
+        color: '#333',
+        fontSize: 16,
+        fontWeight: 'bold',
     },
 });
 

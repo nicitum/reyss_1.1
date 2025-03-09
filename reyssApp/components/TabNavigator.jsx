@@ -11,6 +11,7 @@ import { jwtDecode } from "jwt-decode";
 import AdminAssignedUsersPage from "./route_mgr/AdminAssignedUsers";
 import AdminHomePage from "./HomePage/AdminHomePage"; // Import AdminHomePage
 import AdminOrderHistory from "./Profile/AdminOrderHistory";
+import AdminTransactions from "./Profile/AdminTransactions";
 
 const Tab = createBottomTabNavigator();
 
@@ -95,6 +96,22 @@ const TabNavigator = () => {
                     name="Transactions"
                     component={Transactions}
                     options={{
+                        headerShown: true,
+                        headerTitle: "Transactions",
+                        tabBarIcon: ({ color, size }) => (
+                            <MaterialCommunityIcons name="sync" size={size} color={color} />
+                        ),
+                    }}
+                />
+            )}
+
+            {isSuperAdmin && (
+                <Tab.Screen
+                    name="Transactions"
+                    component={AdminTransactions}
+                    options={{
+                        headerShown: true,
+                        headerTitle: "Transactions",
                         tabBarIcon: ({ color, size }) => (
                             <MaterialCommunityIcons name="sync" size={size} color={color} />
                         ),

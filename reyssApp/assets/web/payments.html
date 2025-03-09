@@ -59,6 +59,7 @@
                 console.log("String for Hashing:", hashString);
                 const calculatedHash = CryptoJS.SHA512(hashString).toString(CryptoJS.enc.Hex).toUpperCase();
                 console.log("Calculated Hash:", calculatedHash);
+                console.log('cosumerData', consumerData);
                 return calculatedHash;
             }
 

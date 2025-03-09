@@ -11,140 +11,194 @@ const {
   getProductss,
   checkExistingOrder,
   toggleDeliveryStatus,
+  getCustomerProductPrice,
+  updateOrderTotalAmount
 } = require("./dbUtility");
 const { executeQuery } = require("../dbUtils/db");
 
 const placeOrderService = async (
   customerId,
-  { products, orderType, totalAmount, orderDate }
+  { products, orderType, orderDate } // We get products, orderType, orderDate
 ) => {
   try {
-    // Create the order entry
-   
+      // 1. Check and Validate Order using checkOrderService - This ALSO CALCULATES an *initial* totalAmount
+      const checkResult = await checkOrderService(customerId, orderType, products, orderDate);
 
-    const placedOn = orderDate;
-    const currentEpoch = Math.floor(Date.now() / 1000);
-    const createdAt = currentEpoch;
-    const updatedAt = currentEpoch;
+      if (!checkResult || !checkResult.response.status) { // Handle errors from checkOrderService
+          return checkResult || { statusCode: 500, response: { status: false, message: "Error validating order." } };
+      }
 
-    const orderId = await createOrder(
-      customerId,
-      totalAmount,
-      orderType,
-      placedOn,
-      createdAt,
-      updatedAt
-    );
+      // Get the *initial* totalAmount from checkOrderService (we won't use this for createOrder)
+      const initialTotalAmount = checkResult.response.data.totalAmount; // Store initial amount for logging if needed
+      console.log("placeOrderService - Initial totalAmount from checkOrderService:", initialTotalAmount);
 
-   
+      // 2. Define placedOn, createdAt, updatedAt **BEFORE** calling createOrder
+      const placedOn = orderDate;  // <--- Define placedOn HERE, BEFORE createOrder
+      const currentEpoch = Math.floor(Date.now() / 1000);
+      const createdAt = currentEpoch;
+      const updatedAt = currentEpoch;
 
 
-    // Add products to the order
-    await addOrderProducts(orderId, products);
-
-    // Create a transaction for COD orders
-    //await createTransactionForCOD(orderId, customerId, totalAmount);
-
-    // Return the result (Order placed successfully)
-    return {
-      statusCode: 200,
-      response: {
-        status: true,
-        message: "Order placed successfully.",
-        data: {
-          orderId,
+      // 3. Create the order entry - Using a TEMPORARY totalAmount (0) for now, will update later
+      const orderId = await createOrder( // Create order first to get orderId for addOrderProducts
           customerId,
+          0, // <--- Use a TEMPORARY totalAmount (like 0) here, we will UPDATE it later!
           orderType,
-          totalAmount,
-          placedOn,
-          products,
-        },
-      },
-    };
+          placedOn,  // <--- Now 'placedOn' is defined before being used!
+          createdAt,
+          updatedAt
+      );
+      await addOrderProducts(customerId, orderId, products); // Pass customerId to addOrderProducts
+
+      // 4. **Recalculate total amount AFTER addOrderProducts** - To get the final total based on prices in order_products table
+      const recalculatedTotalAmount = await recalculateOrderTotal(orderId);
+      console.log("placeOrderService - Recalculated totalAmount (after addOrderProducts):", recalculatedTotalAmount);
+
+
+      // 5. **UPDATE the orders table with the RECALCULATED totalAmount**
+      await updateOrderTotalAmount(orderId, recalculatedTotalAmount); // Implement this new function (see below)
+
+
+      // 6. Return the result with the **RECALCULATED** totalAmount
+      return {
+          statusCode: 200,
+          response: {
+              status: true,
+              message: "Order placed successfully.",
+              data: {
+                  orderId,
+                  customerId,
+                  orderType,
+                  totalAmount: recalculatedTotalAmount, // <--- Return RECALCULATED totalAmount in response
+                  placedOn,
+                  products,
+              },
+          },
+      };
   } catch (error) {
-    console.error("Error in placeOrderService:", error);
-    throw new Error("Failed to place the order.");
+      console.error("Error in placeOrderService:", error);
+      throw new Error("Failed to place the order.");
   }
 };
+
+const recalculateOrderTotal = async (orderId) => {
+  try {
+      const query = `
+          SELECT SUM(price * quantity) AS orderTotal
+          FROM order_products
+          WHERE order_id = ?;
+      `;
+      const results = await executeQuery(query, [orderId]);
+      if (results.length > 0 && results[0].orderTotal !== null) {
+          return parseFloat(results[0].orderTotal);
+      } else {
+          return 0; // Or handle case where no products in order
+      }
+  } catch (error) {
+      console.error("Error recalculating order total:", error);
+      return 0; // Or handle error as needed
+  }
+};
+
 
 const checkOrderService = async (customerId, orderType, products, orderDate) => {
   try {
-    // Check if the user exists
-    const isUser = await isUserExists(customerId);
-    if (!isUser) {
-      return {
-        statusCode: 400,
-        response: { status: false, message: "User doesn't exist." },
-      };
-    }
-
-    // Check if an order for the same type and date already exists for this customer
-    const existingOrder = await checkExistingOrder(customerId, orderDate, orderType);
-    if (existingOrder) {
-      return {
-        statusCode: 400,
-        response: { status: false, message: `Order already exists for ${orderType} on this date.` },
-      };
-    }
-
-    // Validate products and calculate total amount
-    let totalAmount = 0;
-    const invalidProducts = [];
-    const dbProducts = await getProductss();
-
-    for (const product of products) {
-      console.log(`🪵 → Received product:`, product);
-
-      // Ensure we extract a valid product ID
-      const productId = product.product_id ?? product.id; // Handles both cases
-      const { quantity } = product;
-
-      if (!productId) {
-        console.warn(`🚨 Missing product ID for item:`, product);
-        invalidProducts.push("(Missing ID)");
-        continue;
+      // Check if the user exists
+      const isUser = await isUserExists(customerId);
+      if (!isUser) {
+          return {
+              statusCode: 400,
+              response: { status: false, message: "User doesn't exist." },
+          };
       }
 
-      const productData = dbProducts.find((p) => p.id === Number(productId));
-      if (!productData) {
-        console.warn(`🚨 Product not found in DB:`, productId);
-        invalidProducts.push(productId);
-        continue;
+      // Check if an order for the same type and date already exists for this customer
+      const existingOrder = await checkExistingOrder(customerId, orderDate, orderType);
+      if (existingOrder) {
+          return {
+              statusCode: 400,
+              response: { status: false, message: `Order already exists for ${orderType} on this date.` },
+          };
       }
 
-      const parsedQuantity = parseInt(quantity, 10);
-      if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
-        console.warn(`🚨 Invalid quantity (${quantity}) for product ID: ${productId}`);
-        invalidProducts.push(productId);
-        continue;
+      // Validate products and calculate total amount
+      let totalAmount = 0;
+      const invalidProducts = [];
+      const dbProducts = await getProductss();
+
+      for (const product of products) {
+          console.log(`🪵 → checkOrderService - Processing product:`, product);
+
+          // Ensure we extract a valid product ID
+          const productId = product.product_id ?? product.id; // Handles both cases
+          const { quantity } = product;
+
+          if (!productId) {
+              console.warn(`🚨 checkOrderService - Missing product ID for item:`, product);
+              invalidProducts.push("(Missing ID)");
+              continue;
+          }
+
+          const productData = dbProducts.find((p) => p.id === Number(productId));
+          if (!productData) {
+              console.warn(`🚨 checkOrderService - Product not found in DB:`, productId);
+              invalidProducts.push(productId);
+              continue;
+          }
+
+          const parsedQuantity = parseInt(quantity, 10);
+          if (!Number.isInteger(parsedQuantity) || parsedQuantity <= 0) {
+              console.warn(`🚨 checkOrderService - Invalid quantity (${quantity}) for product ID: ${productId}`);
+              invalidProducts.push(productId);
+              continue;
+          }
+
+          // *** Fetch effective price using customerId and productId in checkOrderService ***
+          let effectivePrice = null;
+          try {
+              const customerPriceData = await getCustomerProductPrice(customerId, productId); // Use getCustomerProductPrice
+              if (customerPriceData && customerPriceData.customer_price !== null) {
+                  effectivePrice = customerPriceData.customer_price;
+                  console.log(`checkOrderService - Effective price found in customer_product_price for product ID ${productId}: ${effectivePrice}`);
+              }
+          } catch (customerPriceError) {
+              console.error("checkOrderService - Error fetching customer_price:", customerPriceError);
+              // Fallback to discountPrice if customer price fetch fails
+          }
+
+          if (effectivePrice === null) {
+              effectivePrice = productData.discountPrice; // Fallback to discountPrice
+              console.log(`checkOrderService - Customer price not found, using discountPrice for product ID ${productId}: ${effectivePrice}`);
+          }
+
+          totalAmount += effectivePrice * parsedQuantity; // Use effectivePrice for totalAmount calculation
+          console.log(`checkOrderService - Running totalAmount after adding product ${productId}:`, totalAmount);
       }
 
-      totalAmount += productData.price * parsedQuantity;
-    }
+      // If there are any invalid products, return an error
+      if (invalidProducts.length > 0) {
+          console.error(`🚨 checkOrderService - Invalid products found: ${invalidProducts.join(", ")}`);
+          return {
+              statusCode: 400,
+              response: { status: false, message: `Invalid products found: ${invalidProducts.join(", ")}` },
+          };
+      }
 
-    // If there are any invalid products, return an error
-    if (invalidProducts.length > 0) {
-      console.error(`🚨 Invalid products found: ${invalidProducts.join(", ")}`);
+      console.log(`checkOrderService - Final totalAmount:`, totalAmount);
+
+      // Return valid order data
       return {
-        statusCode: 400,
-        response: { status: false, message: `Invalid products found: ${invalidProducts.join(", ")}` },
+          statusCode: 200,
+          response: { status: true, message: "Valid order, can proceed further.", data: { customerId, orderType, products, totalAmount } },
       };
-    }
-
-    // Return valid order data
-    return {
-      statusCode: 200,
-      response: { status: true, message: "Valid order, can proceed further.", data: { customerId, orderType, products, totalAmount } },
-    };
   } catch (error) {
-    console.error("❌ Error in checkOrderService:", error);
-    return {
-      statusCode: 500,
-      response: { status: false, message: "Internal server error." },
-    };
+      console.error("❌ Error in checkOrderService:", error);
+      return {
+          statusCode: 500,
+          response: { status: false, message: "Internal server error." },
+      };
   }
 };
-
 
 const orderHistoryService = async (customerId) => {
   try {

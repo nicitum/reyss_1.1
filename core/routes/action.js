@@ -1003,7 +1003,6 @@ router.get('/get_customer_credit_summaries', async (req, res) => { // Renamed en
 });
 
 router.post('/payment-response', (req, res) => {
-
     console.log('----- Payment Response POST request received -----');
     console.log('Request Headers:', req.headers);
     console.log('Request Body:', req.body);
@@ -1011,14 +1010,12 @@ router.post('/payment-response', (req, res) => {
 
     const msgParam = req.body.msg;
     let responseJson = {};
-    let statusCode = 200; // Default to success status
+    let statusCode = 200;
 
     if (msgParam) {
         console.log('Raw msg parameter:', msgParam);
-
-        const msgParts = msgParam.split('|'); // Split by pipe delimiter
-        const txnStatus = msgParts[0];       // txn_status is the first element
-
+        const msgParts = msgParam.split('|');
+        const txnStatus = msgParts[0];
         console.log('Parsed txn_status:', txnStatus);
 
         responseJson.txn_status_code = txnStatus;
@@ -1026,21 +1023,20 @@ router.post('/payment-response', (req, res) => {
         responseJson.txn_err_msg = msgParts[2] || 'N/A';
         responseJson.clnt_txn_ref = msgParts[3] || 'N/A';
         responseJson.tpsl_txn_id = msgParts[5] || 'N/A';
-        responseJson.txn_amt = msgParts[6] || 'N/A'; // Transaction Amount
+        responseJson.txn_amt = msgParts[6] || 'N/A';
         responseJson.ref = msgParts[3] || 'N/A';
         responseJson.txnId = msgParts[5] || 'N/A';
 
-        if (txnStatus === '0300') { // Assuming '0300' is success - **VERIFY with Paynimo documentation**
+        if (txnStatus === '0300') {
             responseJson.status = "success";
-        } else { // Payment unsuccessful (or not '0300') - includes "User Aborted" etc.
-            statusCode = 400; // Set error status code
+        } else {
+            statusCode = 400;
             responseJson.status = "failure";
         }
 
-        // --- START: Code to save responseJson to a .txt file ---
-        const filename = 'payment_response.txt'; // Filename for the text file
-        const textData = `Payment Response Data:\n${JSON.stringify(responseJson, null, 2)}`; // Format data as readable JSON string
-
+        // Save to file
+        const filename = 'payment_response.txt';
+        const textData = `Payment Response Data:\n${JSON.stringify(responseJson, null, 2)}`;
         fs.writeFile(filename, textData, (err) => {
             if (err) {
                 console.error('Error writing to TXT file:', err);
@@ -1048,10 +1044,9 @@ router.post('/payment-response', (req, res) => {
                 console.log(`Data saved to ${filename}`);
             }
         });
-        // --- END: Code to save responseJson to a .txt file ---
 
-        res.status(statusCode).json(responseJson); // Send JSON response
-
+        // Directly redirect to the app
+        res.redirect('reyss-app://');
     } else {
         console.log('Error: No "msg" parameter found in POST request body.');
         responseJson.status = "error";
@@ -1060,7 +1055,6 @@ router.post('/payment-response', (req, res) => {
     }
     console.log('----- End of Payment Response POST request -----');
 });
-
 
 router.get('/get-payment-response-data', (req, res) => {
     const filename = 'payment_response.txt';
@@ -1131,6 +1125,18 @@ router.post('/collect_online', async (req, res) => {
                 WHERE customer_id = ?`;
             const updateValues = [newAmountPaidOnline, updatedAmountDue, newCreditLimit, customerId]; // Changed to newAmountPaidOnline
             await executeQuery(updateQuery, updateValues);
+
+            // 3. Delete payment_response.txt after success (callback-based)
+            const filePath = 'payment_response.txt';
+            fs.unlink(filePath, (err) => {
+                if (err) {
+                    console.error(`Error deleting ${filePath}:`, err);
+                    // Log error but don’t fail the request
+                } else {
+                    console.log(`Deleted ${filePath}`);
+                }
+            });
+            
 
             return res.status(200).json({
                 message: "Online payment collected and transaction recorded successfully", // Updated message
@@ -1203,6 +1209,176 @@ router.get("/fetch-remarks", async (req, res) => {
         return res.status(500).json({ message: "Internal server error", error: error.message }); // Include error.message for more detailed debugging in development. Remove or redact in production.
     }
 });
+
+
+
+
+
+router.get("/customer-product-price", async (req, res) => {
+    const productId = req.query.product_id; // Get product_id from query parameters
+    const customerId = req.query.customer_id; // Get customer_id (optional)
+
+    if (!productId) {
+        return res.status(400).json({ message: "Product ID is required" }); // Validate product_id
+    }
+
+    try {
+        // 1. Fetch product from 'products' table to get default prices
+        const productQuery = "SELECT price, discountPrice FROM products WHERE id = ?"; // Assuming 'id' is product ID column
+        const productResults = await executeQuery(productQuery, [productId]);
+
+        if (productResults.length === 0) {
+            return res.status(404).json({ message: "Product not found" }); // Product ID not found
+        }
+        const product = productResults[0]; // Assuming query returns an array, take the first result
+
+        let effectivePrice = product.discountPrice !== null ? product.discountPrice : product.price; // Default price logic
+
+        // 2. Check for customer-specific price if customerId is provided
+        if (customerId) {
+            const customerPriceQuery = "SELECT customer_price FROM customer_product_prices WHERE customer_id = ? AND product_id = ?";
+            const customerPriceResults = await executeQuery(customerPriceQuery, [customerId, productId]);
+
+            if (customerPriceResults.length > 0) {
+                effectivePrice = customerPriceResults[0].customer_price; // Override with customer-specific price
+            }
+        }
+
+        // 3. Return the effective price
+        return res.status(200).json({
+            message: "Product price fetched successfully",
+            effectivePrice: effectivePrice
+        });
+
+    } catch (error) {
+        console.error("Error fetching customer product price:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+});
+
+router.get("/fetch-payment-transactions", async (req, res) => {
+    try {
+        const customerId = req.query.customer_id;
+        const date = req.query.date; // YYYY-MM-DD format
+        const paymentMethod = req.query.payment_method; // 'cash' or 'online'
+
+        if (!customerId) {
+            return res.status(400).json({ message: "Customer ID is required" });
+        }
+
+        // Base query
+        let query = "SELECT * FROM payment_transactions WHERE customer_id = ?";
+        const params = [customerId];
+
+        // Add date filter
+        if (date) {
+            query += " AND DATE(payment_date) = ?";
+            params.push(date);
+        }
+
+        // Add payment method filter
+        if (paymentMethod && ['cash', 'online'].includes(paymentMethod)) {
+            query += " AND payment_method = ?";
+            params.push(paymentMethod);
+        }
+
+        // Execute the query
+        const transactions = await executeQuery(query, params);
+
+        if (transactions.length === 0) {
+            return res.status(404).json({ message: "No transactions found" });
+        }
+
+        return res.status(200).json({
+            message: "Payment transactions fetched successfully",
+            transactions: transactions
+        });
+    } catch (error) {
+        console.error("Error fetching payment transactions:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+});
+
+
+
+router.get("/fetch-all-payment-transactions", async (req, res) => {
+    try {
+        const date = req.query.date; // YYYY-MM-DD format
+        const paymentMethod = req.query.payment_method; // 'cash' or 'online'
+
+        // Base query to fetch all transactions
+        let query = "SELECT * FROM payment_transactions";
+        const params = [];
+
+        // Add date filter if provided
+        if (date) {
+            query += " WHERE DATE(payment_date) = ?";
+            params.push(date);
+        }
+
+        // Add payment method filter if provided
+        if (paymentMethod && ['cash', 'online'].includes(paymentMethod)) {
+            query += date ? " AND payment_method = ?" : " WHERE payment_method = ?";
+            params.push(paymentMethod);
+        }
+
+        // Execute the query
+        const transactions = await executeQuery(query, params);
+
+        if (transactions.length === 0) {
+            return res.status(404).json({ message: "No transactions found" });
+        }
+
+        return res.status(200).json({
+            message: "All payment transactions fetched successfully",
+            transactions: transactions
+        });
+    } catch (error) {
+        console.error("Error fetching all payment transactions:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+});
+
+
+
+router.get("/fetch-names", async (req, res) => {
+    try {
+        const customerId = req.query.customer_id; // Get customer_id from query params
+
+        if (!customerId) {
+            return res.status(400).json({ message: "Customer ID is required" });
+        }
+
+        // SQL SELECT query to fetch the name for a specific customer_id
+        const query = "SELECT name FROM users WHERE customer_id = ?";
+        
+        // Execute the query with customer_id as a parameter to prevent SQL injection
+        const results = await executeQuery(query, [customerId]);
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: "No user found with this customer ID" });
+        }
+
+        // Return the fetched name (assuming 'name' is a column in the users table)
+        return res.status(200).json({
+            message: "User name fetched successfully",
+            name: results[0].name // Assuming one result; return the name field
+        });
+    } catch (error) {
+        console.error("Error fetching user name:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+});
+
+
+
+
+
+
+
+
+
+
 module.exports = router;
 
 

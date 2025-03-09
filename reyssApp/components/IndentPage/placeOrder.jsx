@@ -211,7 +211,7 @@ const PlaceOrderPage = ({ route }) => {
             const newProduct = {
                 category: product.category,
                 name: product.name,
-                price: product.discountPrice || product.price,
+                price: product.effectivePrice || product.effectivePrice,
                 product_id: product.id,
                 quantity: 1,
             };

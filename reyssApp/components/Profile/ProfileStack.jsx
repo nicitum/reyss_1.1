@@ -106,17 +106,11 @@ const ProfileStack = () => {
       />
 
       <Stack.Screen 
-        name="Test" 
+        name="test" 
         component={PaynimoCheckoutWebView} 
-        options={{ title: 'Test'}} 
+        options={{ title: 'test'}} 
         
       />
-
-
-
-
-
-
 
 
 
