@@ -12,8 +12,8 @@ import {
 } from "react-native";
 import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
-import { ipAddress } from "../../../urls";
-import { checkTokenAndRedirect } from "../../../services/auth";
+import { ipAddress } from "../../../urls"; // Adjust path if necessary
+import { checkTokenAndRedirect } from "../../../services/auth"; // Adjust path if necessary
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
@@ -34,7 +34,7 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
     const filterProducts = useCallback(async () => {
         if (!allProducts || allProducts.length === 0) return;
 
-        let filtered = [...allProducts]; // Clone to avoid mutating original array
+        let filtered = [...allProducts];
 
         if (selectedCategory) {
             filtered = filtered.filter((product) =>
@@ -75,25 +75,39 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
                                 customer_id: customerId,
                             },
                         });
-                        // Ensure the returned product includes effectivePrice as the primary price
+                        const basePrice = priceResponse.data.effectivePrice || product.price || 0;
+                        const gstRate = product.gst_rate || 0; // Assuming gst_rate is in product data
+                        const gstAmount = (basePrice * gstRate) / 100;
+                        const finalPrice = basePrice + gstAmount;
+
                         return {
                             ...product,
-                            effectivePrice: priceResponse.data.effectivePrice || product.price || 0,
-                            price: priceResponse.data.effectivePrice || product.price || 0, // Override price to match effectivePrice
+                            effectivePrice: finalPrice,
+                            price: basePrice,
+                            gstRate: gstRate,
+                            gstAmount: gstAmount,
+                            finalPrice: finalPrice,
                         };
                     } catch (priceError) {
                         console.error(`Error fetching price for product ${product.id}:`, priceError);
+                        const basePrice = product.discountPrice || product.price || 0;
+                        const gstRate = product.gst_rate || 0;
+                        const gstAmount = (basePrice * gstRate) / 100;
+                        const finalPrice = basePrice + gstAmount;
                         return {
                             ...product,
-                            effectivePrice: product.discountPrice || product.price || 0,
-                            price: product.discountPrice || product.price || 0, // Fallback
+                            effectivePrice: finalPrice,
+                            price: basePrice,
+                            gstRate: gstRate,
+                            gstAmount: gstAmount,
+                            finalPrice: finalPrice,
                         };
                     }
                 });
 
                 const productsWithPrices = await Promise.all(productsWithPricesPromises);
                 setProducts(productsWithPrices);
-                console.log("Products with prices:", productsWithPrices); // Log after setting state
+                console.log("Products with prices and GST:", productsWithPrices);
             } catch (promiseAllError) {
                 console.error("Error fetching prices:", promiseAllError);
                 setError("Error fetching product prices.");
@@ -125,9 +139,10 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
                     "Content-Type": "application/json",
                 },
             });
-
+           
             const fetchedProducts = response.data;
             setAllProducts(fetchedProducts);
+            console.log("Fetched Products Data:", fetchedProducts);
 
             const productCategories = [...new Set(fetchedProducts.map((product) => product.category).filter(Boolean))];
             setCategories(productCategories);
@@ -253,16 +268,17 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
                                     <Text style={styles.productName}>{item.name}</Text>
                                     <Text style={styles.productDetails}>
                                         {item.category} | {item.brand} |
-                                        <Text style={styles.price}> ₹{item.effectivePrice ? item.effectivePrice.toFixed(2) : 'N/A'}</Text>
+                                        <Text style={styles.price}> ₹{item.finalPrice ? item.finalPrice.toFixed(2) : 'N/A'}</Text>
                                     </Text>
                                 </View>
                                 <TouchableOpacity
                                     style={styles.addButton}
                                     onPress={() => {
-                                        console.log("Adding product:", item); // Debug log
+                                        console.log("Adding product:", item);
+                                        console.log("Product being added with price:", item.finalPrice);
                                         onAddProduct({
                                             ...item,
-                                            price: item.effectivePrice, // Explicitly set price to effectivePrice
+                                            price: item.finalPrice,
                                         });
                                     }}
                                 >
@@ -270,7 +286,7 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
                                 </TouchableOpacity>
                             </View>
                         )}
-                        keyExtractor={(item, index) => `${item.id}-${index}`} // More unique key
+                        keyExtractor={(item, index) => `${item.id}-${index}`}
                         ListEmptyComponent={
                             <Text style={styles.emptyText}>
                                 {searchQuery.length > 2
@@ -285,7 +301,6 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
     );
 };
 
-// Styles remain unchanged
 const styles = StyleSheet.create({
     modalBackground: {
         flex: 1,

@@ -243,51 +243,49 @@ const updateOrderTotalAmount = async (orderId, recalculatedTotalAmount) => {
       throw error; // Or handle error as needed
   }
 };
+
 const addOrderProducts = async (customerId, orderId, products) => {
   try {
       const availableProducts = await getProductss();
-      console.log("addOrderProducts - Available products fetched:", availableProducts); // Log available products
 
       const orderProductQueries = products.map(async (product) => {
           const productId = product.product_id || product.id;
-          const { quantity } = product;
-
-          console.log(`addOrderProducts - Processing product: productId=<span class="math-inline">\{productId\}, customerId\=</span>{customerId}`);
+          const { quantity, price: frontEndPrice } = product;
 
           if (!productId) {
               throw new Error(`Product with ID undefined received.`);
           }
 
           const productData = availableProducts.find((p) => p.id === Number(productId));
-          console.log("addOrderProducts - Found product data from availableProducts:", productData); // Log productData
           if (!productData) {
               throw new Error(`Product with ID ${productId} not found in available products.`);
           }
 
           let effectivePrice = null;
 
-          console.log(`addOrderProducts - Calling getCustomerProductPrice for productId=<span class="math-inline">\{productId\}, customerId\=</span>{customerId}`);
-          try {
-              const customerPriceData = await getCustomerProductPrice(customerId, productId);
-              console.log(`addOrderProducts - Result from getCustomerProductPrice:`, customerPriceData); // Log customerPriceData
-              if (customerPriceData && customerPriceData.customer_price !== null) {
-                  effectivePrice = customerPriceData.customer_price;
+          if (typeof frontEndPrice === 'number' && frontEndPrice > 0) {
+              effectivePrice = frontEndPrice;
+              console.log(`addOrderProducts - Using price from frontend for product ${productId}: ${effectivePrice}`); // Keeping this log
+          } else {
+              try {
+                  const customerPriceData = await getCustomerProductPrice(customerId, productId);
+                  if (customerPriceData && customerPriceData.customer_price !== null) {
+                      effectivePrice = customerPriceData.customer_price;
+                  }
+              } catch (customerPriceError) {
+                  console.error("addOrderProducts - Error fetching customer_price:", customerPriceError);
               }
-          } catch (customerPriceError) {
-              console.error("addOrderProducts - Error fetching customer_price:", customerPriceError);
+
+              if (effectivePrice === null) {
+                  effectivePrice = productData.discountPrice;
+                  console.log(`addOrderProducts - Fallback to discountPrice: ${effectivePrice}`); // Keeping this log
+              }
           }
 
-          if (effectivePrice === null) {
-              effectivePrice = productData.discountPrice;
-              console.log(`addOrderProducts - Fallback to discountPrice: ${effectivePrice}`);
-          }
-          console.log(`addOrderProducts - Effective Price used for product ${productId}: ${effectivePrice}`);
+          const query = `INSERT INTO order_products (order_id, product_id, quantity, price, name, category) VALUES (?, ?, ?, ?, ?, ?);`;
 
           return {
-              query: `
-                  INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
-                  VALUES (?, ?, ?, ?, ?, ?);
-              `,
+              query: query,
               values: [
                   orderId,
                   productId,
@@ -300,12 +298,10 @@ const addOrderProducts = async (customerId, orderId, products) => {
       });
 
       const queries = await Promise.all(orderProductQueries);
-      console.log("addOrderProducts - Prepared queries:", queries); // Log prepared queries
-
       for (const query of queries) {
           await executeQuery(query.query, query.values);
       }
-      console.log("addOrderProducts - Queries executed successfully"); // Log success
+      console.log("addOrderProducts - Queries executed successfully"); // Keeping this log
   } catch (error) {
       console.error("Error in addOrderProducts:", error);
       throw new Error("Failed to add products to the order.");

@@ -15,6 +15,8 @@ import DailyOrdersReport from './DailyOrdersReport';
 import Remarks from './Remarks';
 import PaynimoCheckoutWebView from './test';
 
+import Invoice from '../route_mgr/Invoice';
+
 const Stack = createStackNavigator();
 
 const ProfileStack = () => {
@@ -59,6 +61,7 @@ const ProfileStack = () => {
         component={PlaceOrderAdmin} 
         options={{ title: 'On Behalf' }} 
       />
+      
 
       <Stack.Screen 
         name="LoadingSlip" 
@@ -112,9 +115,29 @@ const ProfileStack = () => {
         
       />
 
+      <Stack.Screen 
+        name="Invoice" 
+        component={Invoice} 
+        options={{ title: 'Invoice' }} 
+      />
+
+
+
+
+
+
+
+
+
+
+
 
 
     </Stack.Navigator>
+      
+
+
+      
     
   );
 };

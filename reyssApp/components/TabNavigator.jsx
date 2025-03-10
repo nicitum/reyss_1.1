@@ -8,7 +8,6 @@ import IndentStack from "./IndentPage/IndentStack";
 import { View, Text, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jwtDecode } from "jwt-decode";
-import AdminAssignedUsersPage from "./route_mgr/AdminAssignedUsers";
 import AdminHomePage from "./HomePage/AdminHomePage"; // Import AdminHomePage
 import AdminOrderHistory from "./Profile/AdminOrderHistory";
 import AdminTransactions from "./Profile/AdminTransactions";

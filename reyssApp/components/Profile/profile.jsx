@@ -145,6 +145,14 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                                 </TouchableOpacity>
 
 
+                                <TouchableOpacity
+                                    style={styles.subMenuItem}
+                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("Invoice"); }}
+                                >
+                                    <Text style={styles.subMenuText}>Invoice</Text>
+                                </TouchableOpacity>
+
+
                                 
                             </>
                         ) : (

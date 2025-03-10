@@ -211,13 +211,14 @@ const PlaceOrderPage = ({ route }) => {
             const newProduct = {
                 category: product.category,
                 name: product.name,
-                price: product.effectivePrice || product.effectivePrice,
+                price: product.effectivePrice,
                 product_id: product.id,
                 quantity: 1,
             };
 
             const updatedProducts = [...currentProducts, newProduct];
             setOrderDetails({ ...orderDetails, products: updatedProducts });
+            console.log("orderDetails after handleAddProduct:", orderDetails); // <==== ADD THIS LINE
             setShowSearchModal(false);
             setTotalOrderAmount(calculateTotalAmount(updatedProducts)); // Calculate and set total amount
 
@@ -387,6 +388,7 @@ const PlaceOrderPage = ({ route }) => {
             const transformedData = orderDetails.products.map((item) => ({
                 product_id: item.product_id,
                 quantity: item.quantity,
+                price: item.price,
             }));
             const orderDate = new Date(selectedDate).toISOString();
     
