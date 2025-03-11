@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
 import { jwtDecode } from 'jwt-decode';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import SearchProductModal from '../IndentPage/nestedPage/searchProductModal';
+import SearchProductModalAdmin from './searchProductModalAdmin';
 import moment from 'moment';
 import { checkTokenAndRedirect } from '../../services/auth';
 
@@ -26,6 +26,8 @@ const UpdateOrderScreen = () => {
     const [showSearchModal, setShowSearchModal] = useState(false); // State for modal visibility
     const [orderDeleteLoading, setOrderDeleteLoading] = useState(false);
     const [orderDeleteLoadingId, setOrderDeleteLoadingId] = useState(null);
+
+    const [selectedOrderCustomerId, setSelectedOrderCustomerId] = useState(null);
 
 
     useEffect(() => {
@@ -115,27 +117,24 @@ const UpdateOrderScreen = () => {
                 "Content-Type": "application/json",
             };
 
-            console.log("FETCH ORDER PRODUCTS - Request URL:", url);
-            console.log("FETCH ORDER PRODUCTS - Request Headers:", headers);
-
             const productsResponse = await fetch(url, { headers });
-
-            console.log("FETCH ORDER PRODUCTS - Response Status:", productsResponse.status);
-            console.log("FETCH ORDER PRODUCTS - Response Status Text:", productsResponse.statusText);
 
             if (!productsResponse.ok) {
                 const errorText = await productsResponse.text();
                 const message = `Failed to fetch order products. Status: ${productsResponse.status}, Text: ${errorText}`;
                 console.error("FETCH ORDER PRODUCTS - Error Response Text:", errorText);
-                // **Modified Condition: Only throw error if NOT a 404 "No products found"**
                 if (productsResponse.status !== 404) {
                     throw new Error(message);
                 } else {
-                    // **Handle 404 "No products found" gracefully:**
                     console.log("FETCH ORDER PRODUCTS - No products found for this order, initializing empty product list.");
-                    setProducts([]); // Initialize products to empty array
+                    setProducts([]);
                     setSelectedOrderId(orderIdToFetch);
-                    return; // Exit function early, no need to process JSON
+                    // Find the order to set customer ID
+                    const selectedOrder = orders.find(order => order.id === orderIdToFetch);
+                    if (selectedOrder) {
+                        setSelectedOrderCustomerId(selectedOrder.customer_id);
+                    }
+                    return;
                 }
             }
 
@@ -143,6 +142,11 @@ const UpdateOrderScreen = () => {
             console.log("FETCH ORDER PRODUCTS - Response Data:", productsData);
             setProducts(productsData);
             setSelectedOrderId(orderIdToFetch);
+            // Set customer ID when products are fetched
+            const selectedOrder = orders.find(order => order.id === orderIdToFetch);
+            if (selectedOrder) {
+                setSelectedOrderCustomerId(selectedOrder.customer_id);
+            }
 
         } catch (error) {
             console.error("FETCH ORDER PRODUCTS - Fetch Error:", error);
@@ -150,6 +154,7 @@ const UpdateOrderScreen = () => {
             Toast.show({ type: 'error', text1: 'Fetch Error', text2: error.message || "Failed to fetch order products." });
             setProducts([]);
             setSelectedOrderId(null);
+            setSelectedOrderCustomerId(null);
         } finally {
             setLoading(false);
         }
@@ -884,10 +889,12 @@ const UpdateOrderScreen = () => {
             )}
 
             <Toast ref={(ref) => Toast.setRef(ref)} />
-            <SearchProductModal
+            <SearchProductModalAdmin
                 isVisible={showSearchModal}
                 onClose={() => setShowSearchModal(false)}
                 onAddProduct={handleAddProductToOrder}
+                currentCustomerId={selectedOrderCustomerId} // Pass the customer ID of the selected order
+                selectedOrderId={selectedOrderId} // Pass selected order ID if needed
             />
         </View>
     )};

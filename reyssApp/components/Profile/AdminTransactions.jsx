@@ -1,29 +1,33 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, ActivityIndicator, Alert, TouchableOpacity, TextInput, Platform, ToastAndroid } from 'react-native';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import * as XLSX from 'xlsx';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AdminTransactions = () => {
     const [transactions, setTransactions] = useState([]);
+    const [filteredTransactions, setFilteredTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [selectedDate, setSelectedDate] = useState(null);
     const [isDatePickerVisible, setDatePickerVisibility] = useState(false);
     const [paymentFilter, setPaymentFilter] = useState('All');
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Fetch all payment transactions and customer names
     const fetchTransactions = async () => {
         try {
-            // Build query params for transactions
             let url = `http://192.168.1.13:8090/fetch-all-payment-transactions`;
             if (selectedDate) {
-                const formattedDate = selectedDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                const formattedDate = selectedDate.toISOString().split('T')[0];
                 url += `?date=${formattedDate}`;
             }
             if (paymentFilter !== 'All') {
                 url += selectedDate ? `&payment_method=${paymentFilter.toLowerCase()}` : `?payment_method=${paymentFilter.toLowerCase()}`;
             }
 
-            // Fetch transactions from API
             const response = await fetch(url, {
                 method: 'GET',
                 headers: {
@@ -39,7 +43,6 @@ const AdminTransactions = () => {
             const data = await response.json();
             console.log("Transactions fetched:", data.transactions);
 
-            // Fetch customer names for each transaction
             const transactionsWithNames = await Promise.all(
                 data.transactions.map(async (transaction) => {
                     try {
@@ -70,14 +73,124 @@ const AdminTransactions = () => {
 
             console.log("Transactions with names:", transactionsWithNames);
             setTransactions(transactionsWithNames);
+            filterTransactions(transactionsWithNames, searchQuery);
             setError(null);
         } catch (err) {
             console.error("Error fetching transactions:", err);
             setError(err.message);
             setTransactions([]);
+            setFilteredTransactions([]);
             Alert.alert("Error", `Failed to load transactions: ${err.message}`);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Filter transactions by search query
+    const filterTransactions = (data, query) => {
+        if (!query) {
+            setFilteredTransactions(data);
+            return;
+        }
+        const filtered = data.filter(transaction =>
+            transaction.customerName.toLowerCase().includes(query.toLowerCase())
+        );
+        setFilteredTransactions(filtered);
+    };
+
+    // Handle search input change
+    const handleSearch = (text) => {
+        setSearchQuery(text);
+        filterTransactions(transactions, text);
+    };
+
+    // Export to Excel
+    const exportToExcel = async () => {
+        if (!filteredTransactions || filteredTransactions.length === 0) {
+            Alert.alert("No Data", "There are no transactions to export.");
+            return;
+        }
+
+        const wb = XLSX.utils.book_new();
+        const wsData = [
+            ["Transaction ID", "Customer Name", "Payment Method", "Amount", "Date"],
+            ...filteredTransactions.map(t => [
+                t.transaction_id,
+                t.customerName,
+                t.payment_method,
+                parseFloat(t.payment_amount).toFixed(2),
+                new Date(t.payment_date).toLocaleDateString(),
+            ]),
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        XLSX.utils.book_append_sheet(wb, ws, "AdminTransactions");
+        const wbout = XLSX.write(wb, { type: "base64", bookType: "xlsx" });
+        const uri = FileSystem.cacheDirectory + "AdminTransactionsReport.xlsx";
+
+        await FileSystem.writeAsStringAsync(uri, wbout, {
+            encoding: FileSystem.EncodingType.Base64,
+        });
+
+        save(uri, "TransactionsReport.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Admin Transactions Report");
+    };
+
+    // Save function
+    const save = async (uri, filename, mimetype, reportType) => {
+        if (Platform.OS === "android") {
+            try {
+                let directoryUriToUse = await AsyncStorage.getItem('orderReportDirectoryUri');
+
+                if (!directoryUriToUse) {
+                    const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+                    if (permissions.granted) {
+                        directoryUriToUse = permissions.directoryUri;
+                        await AsyncStorage.setItem('orderReportDirectoryUri', directoryUriToUse);
+                    } else {
+                        shareAsync(uri, reportType);
+                        return;
+                    }
+                }
+
+                const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+                const newUri = await FileSystem.StorageAccessFramework.createFileAsync(
+                    directoryUriToUse,
+                    filename,
+                    mimetype
+                );
+                await FileSystem.writeAsStringAsync(newUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+
+                if (Platform.OS === 'android') {
+                    ToastAndroid.show(`${reportType} Saved Successfully!`, ToastAndroid.SHORT);
+                } else {
+                    Alert.alert('Success', `${reportType} Saved Successfully!`);
+                }
+            } catch (error) {
+                console.error("Error saving file:", error);
+                if (error.message.includes('permission')) {
+                    await AsyncStorage.removeItem('orderReportDirectoryUri');
+                }
+                if (Platform.OS === 'android') {
+                    ToastAndroid.show(`Failed to save ${reportType}. Please try again.`, ToastAndroid.SHORT);
+                } else {
+                    Alert.alert('Error', `Failed to save ${reportType}. Please try again.`);
+                }
+            }
+        } else {
+            shareAsync(uri, reportType);
+        }
+    };
+
+    // Share function for non-Android platforms
+    const shareAsync = async (uri, reportType) => {
+        try {
+            await Sharing.shareAsync(uri, {
+                dialogTitle: `Share ${reportType}`,
+                mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                UTI: "com.microsoft.excel.xlsx",
+            });
+        } catch (error) {
+            console.error("Error sharing file:", error);
+            Alert.alert("Error", `Failed to share ${reportType}.`);
         }
     };
 
@@ -111,7 +224,7 @@ const AdminTransactions = () => {
 
     return (
         <ScrollView style={styles.container}>
-            {/* Header with Date Picker and Filter */}
+            {/* Header with Date Picker, Filter, and Export */}
             <View style={styles.headerContainer}>
                 <TouchableOpacity onPress={showDatePicker} style={styles.datePickerButton}>
                     <Text style={styles.datePickerText}>
@@ -121,7 +234,18 @@ const AdminTransactions = () => {
                 <TouchableOpacity onPress={togglePaymentFilter} style={styles.filterButton}>
                     <Text style={styles.filterText}>{paymentFilter}</Text>
                 </TouchableOpacity>
+                <TouchableOpacity onPress={exportToExcel} style={styles.exportButton}>
+                    <Text style={styles.exportText}>Export</Text>
+                </TouchableOpacity>
             </View>
+
+            {/* Search Input */}
+            <TextInput
+                style={styles.searchInput}
+                placeholder="Search by Customer Name"
+                value={searchQuery}
+                onChangeText={handleSearch}
+            />
 
             {/* Date Picker Modal */}
             <DateTimePickerModal
@@ -140,7 +264,7 @@ const AdminTransactions = () => {
                 </View>
             ) : error ? (
                 <Text style={styles.errorText}>{error}</Text>
-            ) : transactions.length === 0 ? (
+            ) : filteredTransactions.length === 0 ? (
                 <Text style={styles.noDataText}>No transactions found.</Text>
             ) : (
                 <View style={styles.tableContainer}>
@@ -153,7 +277,7 @@ const AdminTransactions = () => {
                         <Text style={styles.tableHeader}>Date</Text>
                     </View>
                     {/* Table Rows */}
-                    {transactions.map((transaction, index) => (
+                    {filteredTransactions.map((transaction, index) => (
                         <View key={index} style={styles.tableRow}>
                             <Text style={styles.tableCell}>{transaction.transaction_id}</Text>
                             <Text style={styles.tableCell}>{transaction.customerName}</Text>
@@ -179,7 +303,7 @@ const styles = StyleSheet.create({
     headerContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 20,
+        marginBottom: 10,
     },
     datePickerButton: {
         backgroundColor: '#007bff',
@@ -202,6 +326,26 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 14,
         fontWeight: '600',
+    },
+    exportButton: {
+        backgroundColor: '#FFBF00',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 5,
+    },
+    exportText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    searchInput: {
+        height: 40,
+        borderColor: '#ccc',
+        borderWidth: 1,
+        borderRadius: 5,
+        paddingHorizontal: 10,
+        marginBottom: 15,
+        backgroundColor: '#fff',
     },
     headerText: {
         fontSize: 24,

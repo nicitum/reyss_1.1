@@ -4,10 +4,10 @@ import OrderCard from "./orderCard";
 import moment from "moment";
 import Toast from "react-native-toast-message";
 
-const showToast = (message) => {
+const showToast = (message, type = "info") => {
     Toast.show({
-        type: "info", // Changed to info to reflect just information
-        text1: "Order Information",
+        type, // "info" for general messages, "error" for restrictions
+        text1: type === "info" ? "Order Information" : "Time Restriction",
         text2: message,
         position: "top",
         visibilityTime: 3000,
@@ -20,8 +20,33 @@ const showToast = (message) => {
 };
 
 const OrdersList = ({ amOrder, pmOrder, selectedDate, navigation }) => {
+    const currentTime = new Date();
+    const currentHour = currentTime.getHours();
+    const currentMinute = currentTime.getMinutes();
+    const currentDate = moment(currentTime).format("YYYY-MM-DD");
+    const isSelectedDateToday = moment(selectedDate).format("YYYY-MM-DD") === currentDate;
+
+    // AM allowed between 6:00 AM and 8:00 AM (6 <= hour < 8)
+    const isAMAllowed = isSelectedDateToday
+        ? currentHour >= 6 && currentHour < 8
+        : true; // Allow AM if not today (no time restriction)
+
+    // PM allowed between 12:00 PM and 4:00 PM (12 <= hour < 16)
+    const isPMAllowed = isSelectedDateToday
+        ? currentHour >= 12 && currentHour < 16
+        : true; // Allow PM if not today (no time restriction)
+
     const handleOrderClick = (order, shift) => {
-        // Always navigate to PlaceOrderPage
+        if (shift === "AM" && !isAMAllowed) {
+            showToast("AM orders can only be placed between 6:00 AM and 8:00 AM.", "error");
+            return;
+        }
+        if (shift === "PM" && !isPMAllowed) {
+            showToast("PM orders can only be placed between 12:00 PM and 4:00 PM.", "error");
+            return;
+        }
+
+        // Navigate to PlaceOrderPage if time is allowed
         navigation.navigate("PlaceOrderPage", { order, selectedDate, shift });
         if (order) {
             showToast(`Navigating to existing ${shift} order details for ${moment(selectedDate).format('YYYY-MM-DD')}.`);
@@ -33,8 +58,38 @@ const OrdersList = ({ amOrder, pmOrder, selectedDate, navigation }) => {
     return (
         <>
             <ScrollView style={styles.ordersContainer}>
-                <OrderCard shift="AM" order={amOrder} selectedDate={selectedDate} onOrderClick={handleOrderClick} />
-                <OrderCard shift="PM" order={pmOrder} selectedDate={selectedDate} onOrderClick={handleOrderClick} />
+                {isAMAllowed || !isSelectedDateToday ? (
+                    <OrderCard
+                        shift="AM"
+                        order={amOrder}
+                        selectedDate={selectedDate}
+                        onOrderClick={handleOrderClick}
+                    />
+                ) : (
+                    <OrderCard
+                        shift="AM"
+                        order={amOrder}
+                        selectedDate={selectedDate}
+                        onOrderClick={handleOrderClick}
+                        disabled={true} // Pass disabled prop to OrderCard if outside time range
+                    />
+                )}
+                {isPMAllowed || !isSelectedDateToday ? (
+                    <OrderCard
+                        shift="PM"
+                        order={pmOrder}
+                        selectedDate={selectedDate}
+                        onOrderClick={handleOrderClick}
+                    />
+                ) : (
+                    <OrderCard
+                        shift="PM"
+                        order={pmOrder}
+                        selectedDate={selectedDate}
+                        onOrderClick={handleOrderClick}
+                        disabled={true} // Pass disabled prop to OrderCard if outside time range
+                    />
+                )}
             </ScrollView>
             <Toast />
         </>

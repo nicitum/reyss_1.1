@@ -18,9 +18,14 @@ const AdminHomePage = () => {
     const [userDetails, setUserDetails] = useState(null);
     const [isLoading, setIsLoading] = useState(true); // Add loading state for initial page load
     const [error, setError] = useState(null); // Add error state for initial page load
-    const [totalAmountDue, setTotalAmountDue] = useState(null); // State for total amount due
-    const [isTotalDueLoading, setIsTotalDueLoading] = useState(false); // Loading state for total amount due section
-    const [totalDueError, setTotalDueError] = useState(null); // Error state for total amount due section
+    const [totalAmountDue, setTotalAmountDue] = useState(null); 
+    const [totalAmountPaid, setTotalAmountPaid] = useState(null);
+    const [totalAmountPaidCash, setTotalAmountPaidCash] = useState(null);
+    const [totalAmountPaidOnline, setTotalAmountPaidOnline] = useState(null);/// State for total amount due
+    const [isTotalDueLoading, setIsTotalDueLoading] = useState(false); 
+    const [isTotalPaidLoading, setIsTotalPaidLoading] = useState(false); // Loading state for total amount due section
+    const [totalDueError, setTotalDueError] = useState(null); 
+    const [totalPaidError, setTotalPaidError] = useState(null);// Error state for total amount due section
     const navigation = useNavigation();
 
     // Fetch user details from API - Copied from HomePage.jsx as requested
@@ -88,6 +93,33 @@ const AdminHomePage = () => {
         }
     }, [navigation]);
 
+    const fetchTotalAmountPaid = useCallback(async () => {
+        setIsTotalPaidLoading(true); // Start loading for total amount due
+        setTotalDueError(null); // Reset error for total amount due
+        try {
+            const token = await checkTokenAndRedirect(navigation); // Reuse token logic
+            const response = await fetch(`http://${ipAddress}:8090/admin/total-amount-paid`, {
+                headers: {
+                    Authorization: `Bearer ${token}`, // Include token for authorization if needed
+                },
+            });
+            if (!response.ok) {
+                const message = `Failed to fetch total amount paid. Status: ${response.status}`;
+                throw new Error(message);
+            }
+            const data = await response.json();
+            setTotalAmountPaid(data.totalAmountPaid);
+            setTotalAmountPaidCash(data.totalAmountPaidCash)
+            setTotalAmountPaidOnline(data.totalAmountPaidOnline) // Update totalAmountDue state
+        } catch (error) {
+            console.error("Error fetching total amount paid:", error);
+            setTotalPaidError("Error fetching total amount paid."); // Set error state for total due
+            setTotalAmountPaid('Error'); // Set to 'Error' to display error in UI
+        } finally {
+            setIsTotalPaidLoading(false); // End loading for total amount due
+        }
+    }, [navigation]);
+
      // Fetch data and update state (modified to call fetchTotalAmountDue)
      const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -95,12 +127,13 @@ const AdminHomePage = () => {
         const userData = await userDetailsData1();
         if (userData) {
             setUserDetails(userData);
-            await fetchTotalAmountDue(); // Fetch total amount due after user details
+            await fetchTotalAmountDue();
+            await fetchTotalAmountPaid(); // Fetch total amount due after user details
         } else {
             setIsLoading(false); // Stop loading even if userData fetch fails, to show error
         }
         setIsLoading(false); // Stop loading after all fetches are complete, success or fail for userData (error handled inside)
-    }, [userDetailsData1, fetchTotalAmountDue]); // Added fetchTotalAmountDue to dependency array
+    }, [userDetailsData1, fetchTotalAmountDue,fetchTotalAmountPaid]); // Added fetchTotalAmountDue to dependency array
 
 
     useFocusEffect(
@@ -153,7 +186,7 @@ const AdminHomePage = () => {
 
                     {/* Total Amount Due Card */}
                     <View style={[styles.card, styles.amountDueCard]}>
-                        <Text style={[styles.cardTitle, styles.royalYellowText]}>Total Amount Due</Text>
+                        <Text style={[styles.cardTitle, styles.royalYellowText]}>Total Outstanding</Text>
                         {isTotalDueLoading ? (
                             <ActivityIndicator size="large" color="#FDDA0D" />
                         ) : totalDueError ? (
@@ -164,6 +197,46 @@ const AdminHomePage = () => {
                             <Text style={styles.amountDueValue}>₹ {totalAmountDue}</Text>
                         )}
                     </View>
+
+                    <View style={[styles.card, styles.amountDueCard]}>
+                        <Text style={[styles.cardTitle, styles.royalYellowText]}>Total Amount Paid Cash</Text>
+                        {isTotalDueLoading ? (
+                            <ActivityIndicator size="large" color="#FDDA0D" />
+                        ) : totalDueError ? (
+                            <Text style={styles.errorTextSmall}>{totalDueError}</Text>
+                        ) : totalAmountDue === 'Error' ? (
+                            <Text style={styles.errorTextSmall}>Failed to load amount due.</Text>
+                        ) : (
+                            <Text style={styles.amountDueValue}>₹ {totalAmountPaidCash}</Text>
+                        )}
+                    </View>
+                    <View style={[styles.card, styles.amountDueCard]}>
+                        <Text style={[styles.cardTitle, styles.royalYellowText]}>Total Amount Paid Online</Text>
+                        {isTotalDueLoading ? (
+                            <ActivityIndicator size="large" color="#FDDA0D" />
+                        ) : totalDueError ? (
+                            <Text style={styles.errorTextSmall}>{totalDueError}</Text>
+                        ) : totalAmountDue === 'Error' ? (
+                            <Text style={styles.errorTextSmall}>Failed to load amount due.</Text>
+                        ) : (
+                            <Text style={styles.amountDueValue}>₹ {totalAmountPaidOnline}</Text>
+                        )}
+                    </View>
+
+                      {/* Total Amount Paid Card */}
+                      <View style={[styles.card, styles.amountDueCard]}>
+                        <Text style={[styles.cardTitle, styles.royalYellowText]}>Total Amount Paid</Text>
+                        {isTotalDueLoading ? (
+                            <ActivityIndicator size="large" color="#FDDA0D" />
+                        ) : totalDueError ? (
+                            <Text style={styles.errorTextSmall}>{totalDueError}</Text>
+                        ) : totalAmountDue === 'Error' ? (
+                            <Text style={styles.errorTextSmall}>Failed to load amount due.</Text>
+                        ) : (
+                            <Text style={styles.amountDueValue}>₹ {totalAmountPaid}</Text>
+                        )}
+                    </View>
+               
                 </>
             )}
         </ScrollView>

@@ -7,9 +7,9 @@ import { ipAddress } from "../../urls";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as Print from "expo-print";
-import DateTimePickerModal from 'react-native-modal-datetime-picker';
-import { Checkbox } from 'react-native-paper';
-import moment from 'moment';
+import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { Checkbox } from "react-native-paper";
+import moment from "moment";
 
 const InvoicePage = ({ navigation }) => {
     const [adminId, setAdminId] = useState(null);
@@ -26,89 +26,65 @@ const InvoicePage = ({ navigation }) => {
     const hideDatePicker = () => setDatePickerVisibility(false);
     const handleConfirmDate = (date) => {
         setSelectedDate(date);
-        fetchOrders(date); // Fetch orders for the selected date
+        fetchOrders(date);
         hideDatePicker();
     };
 
-    // Fetch Orders (Now with Date Filtering)
-    const fetchOrders = useCallback(async (dateFilter) => { // Accept dateFilter as argument
+    // Fetch Orders
+    const fetchOrders = useCallback(async (dateFilter) => {
         setLoading(true);
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
             const decodedToken = jwtDecode(token);
             const adminId = decodedToken.id1;
+            setAdminId(adminId);
 
-            const url = `http://${ipAddress}:8090/get-admin-orders/${adminId}`; // No date parameter in URL
+            const url = `http://${ipAddress}:8090/get-admin-orders/${adminId}`;
             const headers = {
                 "Authorization": `Bearer ${token}`,
                 "Content-Type": "application/json",
             };
 
-            console.log("FETCH ADMIN ORDERS - Request URL:", url);
-            console.log("FETCH ADMIN ORDERS - Request Headers:", headers);
-
             const ordersResponse = await fetch(url, { headers });
-
-            console.log("FETCH ADMIN ORDERS - Response Status:", ordersResponse.status);
-            console.log("FETCH ADMIN ORDERS - Response Status Text:", ordersResponse.statusText);
 
             if (!ordersResponse.ok) {
                 const errorText = await ordersResponse.text();
-                const message = `Failed to fetch admin orders. Status: ${ordersResponse.status}, Text: ${errorText}`;
-                console.error("FETCH ADMIN ORDERS - Error Response Text:", errorText);
-                throw new Error(message);
+                throw new Error(`Failed to fetch admin orders. Status: ${ordersResponse.status}, Text: ${errorText}`);
             }
 
             const ordersData = await ordersResponse.json();
-            console.log("FETCH ADMIN ORDERS - Response Data:", ordersData);
             let fetchedOrders = ordersData.orders;
 
-            let filteredOrders = fetchedOrders; // Default to all orders
-
-            if (dateFilter) { // Apply date filter only if dateFilter is provided
+            let filteredOrders = fetchedOrders;
+            if (dateFilter) {
                 const filterDateFormatted = moment(dateFilter).format("YYYY-MM-DD");
-                console.log("DEBUG: Filter Date (YYYY-MM-DD):", filterDateFormatted);
-
                 filteredOrders = fetchedOrders.filter(order => {
-                    if (!order.placed_on) {
-                        console.log("DEBUG: order.placed_on is missing for order ID:", order.id);
-                        return false;
-                    }
-
+                    if (!order.placed_on) return false;
                     const parsedEpochSeconds = parseInt(order.placed_on, 10);
                     const orderDateMoment = moment.unix(parsedEpochSeconds);
-                    const orderDateFormatted = orderDateMoment.format("YYYY-MM-DD");
-
-                    return orderDateFormatted === filterDateFormatted;
+                    return orderDateMoment.format("YYYY-MM-DD") === filterDateFormatted;
                 });
             } else {
-                // Initially load today's orders if no date is selected yet on focus effect
                 const todayFormatted = moment().format("YYYY-MM-DD");
-                filteredOrders = fetchedOrders.filter(order => {
-                    if (!order.placed_on) {
-                        console.log("DEBUG: order.placed_on is missing for order ID:", order.id);
-                        return false;
-                    }
+               归filteredOrders = fetchedOrders.filter(order => {
+                    if (!order.placed_on) return false;
                     const parsedEpochSeconds = parseInt(order.placed_on, 10);
                     const orderDateMoment = moment.unix(parsedEpochSeconds);
-                    const orderDateFormatted = orderDateMoment.format("YYYY-MM-DD");
-                    return orderDateFormatted === todayFormatted;
+                    return orderDateMoment.format("YYYY-MM-DD") === todayFormatted;
                 });
             }
 
-
-            setOrders(filteredOrders); // Set filtered orders
-            console.log('Filtered orders:', filteredOrders);
-            setSelectAllChecked(false); // Reset selectAll on new date/order fetch
-            setSelectedOrderIds([]);      // Clear selected orders on new date/order fetch
-            await fetchAssignedUsers(adminId, token); // Keep fetching assigned users after orders
+            setOrders(filteredOrders);
+            setSelectAllChecked(false);
+            setSelectedOrderIds([]);
+            await fetchAssignedUsers(adminId, token);
         } catch (fetchOrdersError) {
             console.error("FETCH ADMIN ORDERS - Fetch Error:", fetchOrdersError);
             Alert.alert("Error", fetchOrdersError.message || "Failed to fetch admin orders.");
         } finally {
             setLoading(false);
         }
-    }, [fetchAssignedUsers, ipAddress]);
+    }, [fetchAssignedUsers]);
 
     // Fetch Assigned Users
     const fetchAssignedUsers = useCallback(async (currentAdminId, userAuthToken) => {
@@ -154,20 +130,72 @@ const InvoicePage = ({ navigation }) => {
         }
     }, []);
 
-    // Fetch Product Details
-    const fetchProducts = useCallback(async () => {
+    // Fetch Products with Customer-Specific Pricing
+    const fetchProducts = useCallback(async (customerId) => {
         try {
             setLoading(true);
-            setError(null);
             const userAuthToken = await AsyncStorage.getItem("userAuthToken");
 
+            // Fetch all products
             const response = await axios.get(`http://${ipAddress}:8090/products`, {
                 headers: {
                     Authorization: `Bearer ${userAuthToken}`,
                     "Content-Type": "application/json",
                 },
             });
-            return response.data;
+            const products = response.data;
+
+            if (!customerId) {
+                console.warn("No customer ID provided; using default product prices.");
+                return products.map(product => ({
+                    ...product,
+                    price: parseFloat(product.price || 0),
+                    gstRate: parseFloat(product.gst_rate || 0),
+                }));
+            }
+
+            // Fetch customer-specific prices for each product
+            const productsWithPricesPromises = products.map(async (product) => {
+                try {
+                    const priceResponse = await axios.get(`http://${ipAddress}:8090/customer-product-price`, {
+                        params: {
+                            product_id: product.id,
+                            customer_id: customerId,
+                        },
+                        headers: {
+                            Authorization: `Bearer ${userAuthToken}`,
+                        },
+                    });
+                    const basePrice = parseFloat(priceResponse.data.effectivePrice || product.price || 0);
+                    const gstRate = parseFloat(product.gst_rate || 0);
+                    const gstAmount = (basePrice * gstRate) / 100;
+                    const finalPrice = basePrice + gstAmount;
+
+                    return {
+                        ...product,
+                        price: basePrice, // Base price (customer-specific or default)
+                        gstRate: gstRate,
+                        gstAmount: gstAmount,
+                        finalPrice: finalPrice,
+                    };
+                } catch (priceError) {
+                    console.error(`Error fetching price for product ${product.id}:`, priceError);
+                    const basePrice = parseFloat(product.price || 0);
+                    const gstRate = parseFloat(product.gst_rate || 0);
+                    const gstAmount = (basePrice * gstRate) / 100;
+                    const finalPrice = basePrice + gstAmount;
+                    return {
+                        ...product,
+                        price: basePrice,
+                        gstRate: gstRate,
+                        gstAmount: gstAmount,
+                        finalPrice: finalPrice,
+                    };
+                }
+            });
+
+            const productsWithPrices = await Promise.all(productsWithPricesPromises);
+            return productsWithPrices;
         } catch (error) {
             console.error("Error fetching products:", error);
             Alert.alert("Error", "Failed to fetch products.");
@@ -190,6 +218,7 @@ const InvoicePage = ({ navigation }) => {
                         await AsyncStorage.setItem("orderReportDirectoryUri", directoryUriToUse);
                     } else {
                         await Sharing.shareAsync(uri);
+                        ToastAndroid.show(`${reportType} shared instead (permission denied).`, ToastAndroid.SHORT);
                         return;
                     }
                 }
@@ -211,20 +240,102 @@ const InvoicePage = ({ navigation }) => {
                 console.error("Error saving file:", error);
                 if (error.message.includes("permission")) {
                     await AsyncStorage.removeItem("orderReportDirectoryUri");
+                    ToastAndroid.show("Permission issue detected. Cleared directory URI. Please try again.", ToastAndroid.SHORT);
+                } else {
+                    ToastAndroid.show(`Failed to save ${reportType}. Sharing instead.`, ToastAndroid.SHORT);
+                    await Sharing.shareAsync(uri);
                 }
-                ToastAndroid.show(`Failed to save ${reportType}. Please try again.`, ToastAndroid.SHORT);
             }
         } else {
             await Sharing.shareAsync(uri);
+            Alert.alert("Success", `${reportType} shared successfully!`);
         }
+    };
+
+    // Number to Words Function
+    const numberToWords = (num) => {
+        const units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
+        const teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+        const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+        const thousands = ["", "Thousand", "Million", "Billion"];
+
+        if (num === 0) return "Zero Rupees Only";
+
+        const rupees = Math.floor(num);
+        const paise = Math.round((num - rupees) * 100);
+
+        const rupeesToWords = (num) => {
+            if (num === 0) return "";
+            let numStr = num.toString();
+            let words = [];
+            let chunkCount = 0;
+
+            while (numStr.length > 0) {
+                let chunk = parseInt(numStr.slice(-3)) || 0;
+                numStr = numStr.slice(0, -3);
+
+                if (chunk > 0) {
+                    let chunkWords = [];
+                    let hundreds = Math.floor(chunk / 100);
+                    let remainder = chunk % 100;
+
+                    if (hundreds > 0) {
+                        chunkWords.push(`${units[hundreds]} Hundred`);
+                    }
+
+                    if (remainder > 0) {
+                        if (remainder < 10) {
+                            chunkWords.push(units[remainder]);
+                        } else if (remainder < 20) {
+                            chunkWords.push(teens[remainder - 10]);
+                        } else {
+                            let ten = Math.floor(remainder / 10);
+                            let unit = remainder % 10;
+                            chunkWords.push(tens[ten] + (unit > 0 ? ` ${units[unit]}` : ""));
+                        }
+                    }
+
+                    if (chunkCount > 0) {
+                        chunkWords.push(thousands[chunkCount]);
+                    }
+                    words.unshift(chunkWords.join(" "));
+                }
+                chunkCount++;
+            }
+            return words.join(" ");
+        };
+
+        const paiseToWords = (num) => {
+            if (num === 0) return "";
+            if (num < 10) return units[num];
+            if (num < 20) return teens[num - 10];
+            let ten = Math.floor(num / 10);
+            let unit = num % 10;
+            return tens[ten] + (unit > 0 ? ` ${units[unit]}` : "");
+        };
+
+        const rupeesPart = rupeesToWords(rupees);
+        const paisePart = paiseToWords(paise);
+
+        let result = "";
+        if (rupeesPart) {
+            result += `${rupeesPart} Rupees`;
+        }
+        if (paisePart) {
+            result += `${rupeesPart ? " and " : ""}${paisePart} Paise`;
+        }
+        result += " Only";
+
+        return result.trim() || "Zero Rupees Only";
     };
 
     // Generate Invoice and Save as PDF
     const generateInvoice = useCallback(
         async (order) => {
             const orderId = order.id;
+            const customerId = order.customer_id; // Assuming customer_id is available in order object
             const orderProducts = await fetchOrderProducts(orderId);
-            const allProducts = await fetchProducts();
+            const allProducts = await fetchProducts(customerId); // Pass customerId to fetch customer-specific prices
 
             const invoiceProducts = orderProducts
                 .map((op, index) => {
@@ -234,29 +345,18 @@ const InvoicePage = ({ navigation }) => {
                         return null;
                     }
 
-                    const gstRate = product.gst_rate || 0;
-                    const gstRatePercentage = parseFloat(gstRate);
-                    const basePrice = parseFloat(product.price);
-                    //const gstInclusivePrice = parseFloat(op.price); // We still need gstInclusivePrice for price display, but not for GST calc
-                    // const calculatedGstAmount = gstInclusivePrice - basePrice; // No longer needed - incorrect
+                    const basePrice = parseFloat(product.price); // Customer-specific or default price
+                    const gstRate = parseFloat(product.gstRate || 0);
+                    const value = (op.quantity * basePrice).toFixed(2);
+                    const gstAmount = (parseFloat(value) * (gstRate / 100)).toFixed(2);
 
                     const uomMatch = product.name.match(/\d+\s*(kg|g|liters|Ltr|ml|unit)/i);
                     let uom = "N/A";
                     if (uomMatch) {
                         const matchedUom = uomMatch[1].toLowerCase();
-                        if (matchedUom === 'ml' || matchedUom === 'liters' || matchedUom === 'ltr') {
-                            uom = 'Ltr';
-                        } else if (matchedUom === 'kg' || matchedUom === 'g') {
-                            uom = 'Kg';
-                        } else {
-                            uom = matchedUom.toUpperCase();
-                        }
+                        uom = matchedUom === "ml" || matchedUom === "liters" || matchedUom === "ltr" ? "Ltr" :
+                              matchedUom === "kg" || matchedUom === "g" ? "Kg" : matchedUom.toUpperCase();
                     }
-
-                    const value = (op.quantity * basePrice).toFixed(2); // Correct value calculation (Quantity * Rate)
-                    // Correct GST Calculation: GST on Value
-                    const gstAmount = (parseFloat(value) * (gstRatePercentage / 100)).toFixed(2);
-
 
                     return {
                         serialNumber: index + 1,
@@ -266,8 +366,8 @@ const InvoicePage = ({ navigation }) => {
                         uom: uom,
                         rate: basePrice.toFixed(2),
                         value: value,
-                        gstRate: gstRatePercentage.toFixed(2),
-                        gstAmount: gstAmount, // Correctly calculated GST Amount for this line item
+                        gstRate: gstRate.toFixed(2),
+                        gstAmount: gstAmount,
                     };
                 })
                 .filter(Boolean);
@@ -281,23 +381,30 @@ const InvoicePage = ({ navigation }) => {
                 name: "Unknown",
                 phone: "N/A",
                 cust_id: "N/A",
+                route: "N/A",
             };
 
             const subTotal = invoiceProducts.reduce((acc, item) => acc + parseFloat(item.value), 0).toFixed(2);
-            const totalGstAmount = invoiceProducts.reduce((acc, item) => acc + parseFloat(item.gstAmount), 0).toFixed(2); // Summing up correct gstAmount
+            const totalGstAmount = invoiceProducts.reduce((acc, item) => acc + parseFloat(item.gstAmount), 0).toFixed(2);
             const cgstAmount = (parseFloat(totalGstAmount) / 2).toFixed(2);
             const sgstAmount = (parseFloat(totalGstAmount) / 2).toFixed(2);
             const grandTotal = (parseFloat(subTotal) + parseFloat(totalGstAmount)).toFixed(2);
 
+            const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+            const randomNum = Math.floor(1000 + Math.random() * 9000);
+            const invoiceNumber = `INV-${dateStr}-${randomNum}`;
+            const totalInWords = numberToWords(parseFloat(grandTotal));
 
             const htmlContent = `
-                <div style="font-family: Helvetica, Arial, sans-serif; padding: 20px;">
-                    <h1 style="text-align: left; margin-bottom: 10px;">INVOICE</h1>
-                    <p style="margin-bottom: 5px;">Order ID: ${orderId}</p>
-                    <p style="margin-bottom: 15px;">Date: ${new Date().toLocaleDateString()}</p>
+                <div style="font-family: Helvetica, Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
+                    <h1 style="text-align: center; font-size: 24px; margin-bottom: 10px;">SL Enterprises</h1>
+                    <div style="text-align: center; font-size: 14px; margin-bottom: 20px;">
+                        <p>Invoice No: ${invoiceNumber}</p>
+                        <p>Order ID: ${orderId} | Date: ${new Date().toLocaleDateString()}</p>
+                    </div>
 
-                    <div style="margin-bottom: 15px;">
-                        <h3 style="margin-bottom: 5px;">Customer Information</h3>
+                    <div style="margin-bottom: 20px;">
+                        <h3 style="margin-bottom: 5px; font-size: 16px;">Customer Information</h3>
                         <p style="margin: 2px 0;">Name: ${customer.name}</p>
                         <p style="margin: 2px 0;">Phone: ${customer.phone}</p>
                         <p style="margin: 2px 0;">Route: ${customer.route}</p>
@@ -305,15 +412,14 @@ const InvoicePage = ({ navigation }) => {
 
                     <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                         <thead>
-                            <tr style="border-bottom: 1px solid black;">
-                                <th style="padding: 8px; text-align: left;">S.No</th>
-                                <th style="padding: 8px; text-align: left;">Item Name</th>
-                                <th style="padding: 8px; text-align: left;">HSN</th>
-                                <th style="padding: 8px; text-align: right;">Qty</th>
-                                <th style="padding: 8px; text-align: left;">UOM</th>
-                                <th style="padding: 8px; text-align: right;">Rate</th>
-                                <th style="padding: 8px; text-align: right;">Value</th>
-                                
+                            <tr style="border-bottom: 2px solid #000; background-color: #f5f5f5;">
+                                <th style="padding: 10px; text-align: left; font-size: 12px;">S.No</th>
+                                <th style="padding: 10px; text-align: left; font-size: 12px;">Item Name</th>
+                                <th style="padding: 10px; text-align: left; font-size: 12px;">HSN</th>
+                                <th style="padding: 10px; text-align: right; font-size: 12px;">Qty</th>
+                                <th style="padding: 10px; text-align: left; font-size: 12px;">UOM</th>
+                                <th style="padding: 10px; text-align: right; font-size: 12px;">Rate</th>
+                                <th style="padding: 10px; text-align: right; font-size: 12px;">Value</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -321,14 +427,13 @@ const InvoicePage = ({ navigation }) => {
                                 .map(
                                     (item) => `
                                         <tr style="border-bottom: 1px solid #ddd;">
-                                            <td style="padding: 8px;">${item.serialNumber}</td>
-                                            <td style="padding: 8px;">${item.name}</td>
-                                            <td style="padding: 8px;">${item.hsn_code}</td>
-                                            <td style="padding: 8px; text-align: right;">${item.quantity}</td>
-                                            <td style="padding: 8px;">${item.uom}</td>
-                                            <td style="padding: 8px; text-align: right;">${item.rate}</td>
-                                            <td style="padding: 8px; text-align: right;">${item.value}</td>
-                                            
+                                            <td style="padding: 10px; font-size: 12px;">${item.serialNumber}</td>
+                                            <td style="padding: 10px; font-size: 12px;">${item.name}</td>
+                                            <td style="padding: 10px; font-size: 12px;">${item.hsn_code}</td>
+                                            <td style="padding: 10px; text-align: right; font-size: 12px;">${item.quantity}</td>
+                                            <td style="padding: 10px; font-size: 12px;">${item.uom}</td>
+                                            <td style="padding: 10px; text-align: right; font-size: 12px;">${item.rate}</td>
+                                            <td style="padding: 10px; text-align: right; font-size: 12px;">${item.value}</td>
                                         </tr>
                                     `
                                 )
@@ -336,16 +441,26 @@ const InvoicePage = ({ navigation }) => {
                         </tbody>
                     </table>
 
-                    <div style="width:100%; display: flex; flex-direction: column; align-items: flex-end;">
+                    <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
                         <div style="width: 50%;">
-                            <p style="text-align: right; margin: 2px 0;">Subtotal: ₹${subTotal}</p>
-                            <p style="text-align: right; margin: 2px 0;">CGST: ₹${cgstAmount}</p>
-                            <p style="text-align: right; margin: 2px 0;">SGST: ₹${sgstAmount}</p>
-                            <p style="text-align: right; font-weight: bold; margin: 2px 0;">Total: ₹${grandTotal}</p>
+                            <p style="text-align: right; margin: 5px 0; font-size: 14px;">Subtotal: ₹${subTotal}</p>
+                            <p style="text-align: right; margin: 5px 0; font-size: 14px;">CGST: ₹${cgstAmount}</p>
+                            <p style="text-align: right; margin: 5px 0; font-size: 14px;">SGST: ₹${sgstAmount}</p>
+                            <p style="text-align: right; font-weight: bold; margin: 5px 0; font-size: 16px;">Total: ₹${grandTotal}</p>
+                            <p style="text-align: right; font-style: italic; margin: 5px 0; font-size: 12px;">(${totalInWords})</p>
                         </div>
                     </div>
 
-                    <p style="margin-top: 20px; font-size: 0.9em; color: #555; text-align: center;">Authorized Signatory.</p>
+                    <div style="position: absolute; bottom: 20px; left: 20px; font-size: 12px; color: #555;">
+                        <p style="margin: 2px 0;"><strong>SL Enterprises</strong></p>
+                        <p style="margin: 2px 0;">No. 05, 1st Main, 3rd Cross,</p>
+                        <p style="margin: 2px 0;">Ramakrishna Reddy Layout,</p>
+                        <p style="margin: 2px 0;">Behind HP Software,</p>
+                        <p style="margin: 2px 0;">Mahadevapura Post,</p>
+                        <p style="margin: 2px 0;">Bangalore - 560048</p>
+                    </div>
+
+                    <p style="text-align: center; font-size: 12px; color: #555; position: absolute; bottom: 20px; width: 100%;">Authorized Signatory</p>
                 </div>
             `;
 
@@ -355,7 +470,7 @@ const InvoicePage = ({ navigation }) => {
                     base64: false,
                 });
 
-                const filename = `Invoice_${orderId}_${new Date().toISOString().split("T")[0]}.pdf`;
+                const filename = `Invoice_${invoiceNumber}.pdf`;
                 await save(uri, filename, "application/pdf", "Invoice");
 
                 console.log("PDF saved at:", uri);
@@ -384,10 +499,10 @@ const InvoicePage = ({ navigation }) => {
         setLoading(true);
         try {
             for (const order of ordersToProcess) {
-                await generateInvoice(order); // Call generateInvoice for each order
+                await generateInvoice(order);
             }
-            if (Platform.OS === 'android') {
-                ToastAndroid.show(`Invoices generated and saved successfully!`, ToastAndroid.SHORT);
+            if (Platform.OS === "android") {
+                ToastAndroid.show("Invoices generated and saved successfully!", ToastAndroid.SHORT);
             } else {
                 Alert.alert("Success", "Invoices generated and shared!");
             }
@@ -399,63 +514,57 @@ const InvoicePage = ({ navigation }) => {
         }
     }, [orders, selectedOrderIds, selectAllChecked, generateInvoice]);
 
-
     // Handle Order Checkbox Change
     const handleOrderCheckboxChange = useCallback((orderId) => {
-        setSelectedOrderIds(prevSelected => {
-            if (prevSelected.includes(orderId)) {
-                return prevSelected.filter(id => id !== orderId); // Unselect
-            } else {
-                return [...prevSelected, orderId]; // Select
-            }
-        });
+        setSelectedOrderIds(prevSelected =>
+            prevSelected.includes(orderId)
+                ? prevSelected.filter(id => id !== orderId)
+                : [...prevSelected, orderId]
+        );
     }, []);
 
     // Handle Select All Checkbox Change
     const handleSelectAllCheckboxChange = useCallback(() => {
         setSelectAllChecked(prev => !prev);
-        setSelectedOrderIds([]); // Clear individual selections when "Select All" is toggled
+        setSelectedOrderIds([]);
     }, []);
-
 
     // Initial Fetch on Component Mount
     useEffect(() => {
-        fetchOrders(selectedDate); // Fetch orders for today's date initially
+        fetchOrders(selectedDate);
     }, [fetchOrders, selectedDate]);
-
 
     return (
         <View style={styles.container}>
             <View style={styles.header}>
                 <View>
-                    <Button title={`Date: ${selectedDate.toISOString().split('T')[0]}`} onPress={showDatePicker} />
+                    <Button title={`Date: ${selectedDate.toISOString().split("T")[0]}`} onPress={showDatePicker} />
                     <DateTimePickerModal
                         isVisible={isDatePickerVisible}
                         mode="date"
                         onConfirm={handleConfirmDate}
                         onCancel={hideDatePicker}
-                        value={selectedDate}
+                        date={selectedDate}
                     />
                 </View>
                 <View style={styles.selectAllContainer}>
                     <Text>Select All</Text>
                     <Checkbox
-                        status={selectAllChecked ? 'checked' : 'unchecked'}
+                        status={selectAllChecked ? "checked" : "unchecked"}
                         onPress={handleSelectAllCheckboxChange}
                     />
                 </View>
             </View>
 
-
             <ScrollView style={styles.ordersContainer}>
                 {loading && <Text>Loading Orders...</Text>}
-                {error && <Text>Error: {error}</Text>}
+                {error && <Text>Error: ${error}</Text>}
                 {!loading && !error && orders.length > 0 ? (
                     orders.map((order) => (
                         <View key={order.id} style={styles.orderItem}>
-                            {!selectAllChecked && ( // Conditionally render checkbox
+                            {!selectAllChecked && (
                                 <Checkbox
-                                    status={selectedOrderIds.includes(order.id) ? 'checked' : 'unchecked'}
+                                    status={selectedOrderIds.includes(order.id) ? "checked" : "unchecked"}
                                     onPress={() => handleOrderCheckboxChange(order.id)}
                                 />
                             )}
@@ -487,33 +596,32 @@ const styles = StyleSheet.create({
         padding: 20,
     },
     header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
         marginBottom: 15,
     },
     selectAllContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
+        flexDirection: "row",
+        alignItems: "center",
     },
     ordersContainer: {
         marginBottom: 20,
     },
     orderItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
+        flexDirection: "row",
+        alignItems: "center",
         marginVertical: 5,
         borderBottomWidth: 1,
-        borderBottomColor: '#ccc',
+        borderBottomColor: "#ccc",
         paddingBottom: 5,
     },
     orderTextContainer: {
-        flex: 1, // Take up remaining space
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    }
-
+        flex: 1,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+    },
 });
 
 export default InvoicePage;

@@ -245,15 +245,42 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     <TouchableOpacity
                         style={styles.subMenuItem}
                         onPress={() => {
-                        navigation.navigate("test");
+                        navigation.navigate("CashCollectedReport");
                         }}
                     >
-                        <Text style={styles.subMenuText}>test</Text>
+                        <Text style={styles.subMenuText}>Cash Collected</Text>
                         
                     </TouchableOpacity>
                     
                     )}
 
+
+                    {userRole === "superadmin" && (
+                    <TouchableOpacity
+                        style={styles.subMenuItem}
+                        onPress={() => {
+                        navigation.navigate("AmountDueReport");
+                        }}
+                    >
+                        <Text style={styles.subMenuText}>Outstanding Report</Text>
+                        
+                    </TouchableOpacity>
+                    
+                    )}
+                    
+
+                    {userRole === "superadmin" && (
+                    <TouchableOpacity
+                        style={styles.subMenuItem}
+                        onPress={() => {
+                        navigation.navigate("ItemsReport");
+                        }}
+                    >
+                        <Text style={styles.subMenuText}>Items Report</Text>
+                        
+                    </TouchableOpacity>
+                    
+                    )}
                 </View>
                 )}
 

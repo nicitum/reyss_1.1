@@ -827,6 +827,45 @@ router.get('/admin/total-amount-due', async (req, res) => {
 });
 
 
+router.get('/admin/total-amount-paid', async (req, res) => {
+    try {
+        // 1. SQL query to separately sum amount_paid_cash and amount_paid_online
+        const getTotalAmountPaidQuery = `
+            SELECT 
+                SUM(amount_paid_cash) AS totalAmountPaidCash,
+                SUM(amount_paid_online) AS totalAmountPaidOnline,
+                SUM(amount_paid_cash + amount_paid_online) AS totalAmountPaid 
+            FROM credit_limit`;
+
+        // 2. Execute the query
+        const totalAmountPaidResult = await executeQuery(getTotalAmountPaidQuery);
+
+        // 3. Extract all amounts from the result
+        let totalAmountPaidCash = 0;
+        let totalAmountPaidOnline = 0;
+        let totalAmountPaid = 0;
+
+        if (totalAmountPaidResult.length > 0) {
+            totalAmountPaidCash = parseFloat(totalAmountPaidResult[0].totalAmountPaidCash || 0);
+            totalAmountPaidOnline = parseFloat(totalAmountPaidResult[0].totalAmountPaidOnline || 0);
+            totalAmountPaid = parseFloat(totalAmountPaidResult[0].totalAmountPaid || 0);
+        }
+
+        // 4. Respond with all totals
+        res.status(200).json({ 
+            success: true, 
+            totalAmountPaidCash,
+            totalAmountPaidOnline,
+            totalAmountPaid
+        });
+
+    } catch (error) {
+        console.error("Error fetching total amounts paid in /admin/total-amount-paid:", error);
+        res.status(500).json({ success: false, message: "Failed to fetch total amounts paid." });
+    }
+});
+
+
 
 
 router.get('/fetch_credit_data', async (req, res) => {
@@ -1370,12 +1409,114 @@ router.get("/fetch-names", async (req, res) => {
     }
 });
 
+router.get("/fetch-routes", async (req, res) => {
+    try {
+        const customerId = req.query.customer_id; // Get customer_id from query params
+
+        if (!customerId) {
+            return res.status(400).json({ message: "Customer ID is required" });
+        }
+
+        // SQL SELECT query to fetch the name for a specific customer_id
+        const query = "SELECT route FROM users WHERE customer_id = ?";
+        
+        // Execute the query with customer_id as a parameter to prevent SQL injection
+        const results = await executeQuery(query, [customerId]);
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: "No user found with this customer ID" });
+        }
+
+        // Return the fetched name (assuming 'name' is a column in the users table)
+        return res.status(200).json({
+            message: "Route fetched successfully",
+            route: results[0].route // Assuming one result; return the name field
+        });
+    } catch (error) {
+        console.error("Error fetching user route:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+});
 
 
+router.get("/amount_due", async (req, res) => {
+    try {
+        // SQL SELECT query to fetch ALL columns from credit_limit table
+        const query = "SELECT * FROM credit_limit"; // No WHERE clause
+
+        // Execute the query without any parameters
+        const results = await executeQuery(query);
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: "No credit limit data found in the table" }); // More general message
+        }
+
+        // Return all rows from the credit_limit table
+        return res.status(200).json({
+            message: "All credit limit data fetched successfully", // Updated message
+            creditLimitData: results // Now returning the entire array of results
+        });
+    } catch (error) {
+        console.error("Error fetching all credit limit data:", error); // Updated error message
+        return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+});
+
+//ietms report
 
 
+router.get("/item-report", async (req, res) => {
+    const reportDate = req.query.date; // Get the date from query parameter, e.g., 'YYYY-MM-DD'
 
+    try {
+        let query = `
+            SELECT
+                u.route AS route,
+                op.name AS product_name,
+                SUM(op.quantity) AS total_quantity
+            FROM
+                orders o
+            JOIN
+                users u ON o.customer_id = u.customer_id
+            JOIN
+                order_products op ON o.id = op.order_id
+        `;
 
+        let whereClause = ''; // To build WHERE clause conditionally
+        const queryParams = []; // Parameters for parameterized query
+
+        if (reportDate) {
+            whereClause = `WHERE DATE(FROM_UNIXTIME(o.placed_on)) = ?`; // Filter by placed_on date
+            queryParams.push(reportDate); // Add date to query parameters
+        }
+
+        const groupByAndOrderBy = `
+            GROUP BY
+                u.route,
+                op.name
+            ORDER BY
+                u.route,
+                op.name;
+        `;
+
+        query = query + whereClause + groupByAndOrderBy; // Combine query parts
+
+        // Execute the SQL query with parameters
+        const results = await executeQuery(query, queryParams);
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: "No item report data found for the selected date" });
+        }
+
+        return res.status(200).json({
+            message: "Item report data fetched successfully",
+            itemReportData: results
+        });
+    } catch (error) {
+        console.error("Error fetching item report data with date filter:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+});
 
 
 

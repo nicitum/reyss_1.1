@@ -13,9 +13,11 @@ import CreditLimitPage from './CreditLimit';
 import AdminAssignedUsersPage from '../route_mgr/AdminAssignedUsers';
 import DailyOrdersReport from './DailyOrdersReport';
 import Remarks from './Remarks';
-import PaynimoCheckoutWebView from './test';
+import AmountDueReport from './AmountDueReport';
+import CashCollectedReport from './CashCollectedReport';
 
 import Invoice from '../route_mgr/Invoice';
+import ItemsReport from './ItemsReport';
 
 const Stack = createStackNavigator();
 
@@ -109,9 +111,9 @@ const ProfileStack = () => {
       />
 
       <Stack.Screen 
-        name="test" 
-        component={PaynimoCheckoutWebView} 
-        options={{ title: 'test'}} 
+        name="CashCollectedReport" 
+        component={CashCollectedReport} 
+        options={{ title: 'Cash Collected Report'}} 
         
       />
 
@@ -119,6 +121,19 @@ const ProfileStack = () => {
         name="Invoice" 
         component={Invoice} 
         options={{ title: 'Invoice' }} 
+      />
+
+
+      <Stack.Screen 
+        name="AmountDueReport" 
+        component={AmountDueReport} 
+        options={{ title: 'Outstanding Report' }} 
+      />
+
+      <Stack.Screen 
+        name="ItemsReport" 
+        component={ItemsReport} 
+        options={{ title: 'Items Report' }} 
       />
 
 

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, FlatList, StyleSheet, ActivityIndicator, Alert, ScrollView } from 'react-native'; // Import ScrollView
+import { View, Text, TextInput, FlatList, StyleSheet, ActivityIndicator, Alert, ScrollView, Modal, TouchableOpacity } from 'react-native'; // Added Modal and TouchableOpacity
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import { ipAddress } from '../../urls';
-import Toast from 'react-native-toast-message'; // Import Toast
+import Toast from 'react-native-toast-message';
 
 const CollectCashPage = () => {
     const [assignedUsers, setAssignedUsers] = useState([]);
@@ -15,8 +15,11 @@ const CollectCashPage = () => {
     const [error, setError] = useState(null);
     const [userAuthToken, setUserAuthToken] = useState(null);
     const [adminId, setAdminId] = useState(null);
-    const [searchQuery, setSearchQuery] = useState(''); // State for search query
-    const [filteredUsers, setFilteredUsers] = useState([]); // State for filtered users
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filteredUsers, setFilteredUsers] = useState([]);
+    const [isModalVisible, setIsModalVisible] = useState(false); // Modal visibility state
+    const [modalCustomerId, setModalCustomerId] = useState(null); // Customer ID for modal
+    const [modalCash, setModalCash] = useState(null); // Cash amount for modal
 
     const getTokenAndAdminId = useCallback(async () => {
         try {
@@ -38,10 +41,9 @@ const CollectCashPage = () => {
         }
     }, []);
 
-
     const fetchAssignedUsers = useCallback(async (currentAdminId, userAuthToken) => {
         if (!currentAdminId || !userAuthToken) {
-            return; // Exit if adminId or token is missing
+            return;
         }
         setLoadingUsers(true);
         try {
@@ -83,7 +85,6 @@ const CollectCashPage = () => {
         }
     }, []);
 
-
     const fetchAmountDue = useCallback(async (customerId) => {
         console.log("Fetching amount due for customerId:", customerId);
         setLoadingAmounts(prevLoadingAmounts => ({ ...prevLoadingAmounts, [customerId]: true }));
@@ -110,7 +111,6 @@ const CollectCashPage = () => {
         }
     }, []);
 
-
     const handleCollectCash = async (customerId, cash) => {
         if (isNaN(cash) || cash < 0) {
             Alert.alert("Invalid Input", "Please enter a valid non-negative cash amount.");
@@ -125,11 +125,22 @@ const CollectCashPage = () => {
                 text2: `Can collect up to Amount Due: ${parseFloat(currentAmountDue).toFixed(2)}`,
                 position: 'bottom',
             });
-            return; // Prevent API call if cash exceeds amount due
+            return;
         }
 
+        // Show confirmation modal instead of directly collecting cash
+        setModalCustomerId(customerId);
+        setModalCash(cash);
+        setIsModalVisible(true);
+    };
+
+    const confirmCollectCash = async () => {
+        const customerId = modalCustomerId;
+        const cash = modalCash;
 
         setUpdatingCash(prevUpdatingCash => ({ ...prevUpdatingCash, [customerId]: true }));
+        setIsModalVisible(false); // Hide modal
+
         try {
             const response = await fetch(`http://${ipAddress}:8090/collect_cash?customerId=${customerId}`, {
                 method: 'POST',
@@ -147,19 +158,22 @@ const CollectCashPage = () => {
             const data = await response.json();
             setAmountDueMap(prevAmountDueMap => ({ ...prevAmountDueMap, [customerId]: data.updatedAmountDue }));
             setCashInputMap(prevCashInputMap => ({ ...prevCashInputMap, [customerId]: '' }));
-            Toast.show({ // Show Toast on success
+            Toast.show({
                 type: 'success',
                 text1: 'Success',
                 text2: data.message || "Cash collected successfully!",
                 position: 'bottom',
             });
-
         } catch (error) {
             setError(error.message || `Error collecting cash for customer ${customerId}.`);
             Alert.alert("Error", error.message || "Failed to collect cash. Please try again.");
         } finally {
             setUpdatingCash(prevUpdatingCash => ({ ...prevUpdatingCash, [customerId]: false }));
         }
+    };
+
+    const cancelCollectCash = () => {
+        setIsModalVisible(false); // Simply hide the modal
     };
 
     const handleCashInputChange = (customerId, text) => {
@@ -185,7 +199,6 @@ const CollectCashPage = () => {
         loadData();
     }, [getTokenAndAdminId, fetchAssignedUsers]);
 
-
     useEffect(() => {
         if (assignedUsers.length > 0) {
             assignedUsers.forEach(user => {
@@ -205,9 +218,7 @@ const CollectCashPage = () => {
         }
     }, [searchQuery, assignedUsers]);
 
-
     const usersToDisplay = searchQuery ? filteredUsers : assignedUsers;
-
 
     if (loadingUsers) {
         return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#007bff" /><Text>Loading Customers...</Text></View>;
@@ -218,7 +229,7 @@ const CollectCashPage = () => {
     }
 
     return (
-        <ScrollView contentContainerStyle={styles.scrollContainer}> {/* Wrap with ScrollView */}
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
             <View style={styles.container}>
                 <Text style={styles.header}>Collect Cash</Text>
 
@@ -271,26 +282,57 @@ const CollectCashPage = () => {
                         )}
                     />
                 )}
+
+                {/* Confirmation Modal */}
+                <Modal
+                    animationType="fade"
+                    transparent={true}
+                    visible={isModalVisible}
+                    onRequestClose={cancelCollectCash}
+                >
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContainer}>
+                            <Text style={styles.modalTitle}>Confirm Cash Collection</Text>
+                            <Text style={styles.modalText}>
+                                Are you sure you want to collect {modalCash} from customer {modalCustomerId}?
+                            </Text>
+                            <View style={styles.modalButtonContainer}>
+                                <TouchableOpacity
+                                    style={[styles.modalButton, styles.cancelButton]}
+                                    onPress={cancelCollectCash}
+                                >
+                                    <Text style={styles.modalButtonText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.modalButton, styles.confirmButton]}
+                                    onPress={confirmCollectCash}
+                                >
+                                    <Text style={styles.modalButtonText}>Collect</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
             </View>
-            <Toast ref={(ref) => Toast.setRef(ref)} /> {/* Toast component */}
+            <Toast ref={(ref) => Toast.setRef(ref)} />
         </ScrollView>
     );
 };
 
 const styles = StyleSheet.create({
     scrollContainer: {
-        flexGrow: 1, // Important for ScrollView to work correctly with content
-        paddingVertical: 20, // Add padding to the ScrollView content
+        flexGrow: 1,
+        paddingVertical: 20,
     },
     container: {
         flex: 1,
-        paddingHorizontal: 16, // Reduced padding for container for search bar
+        paddingHorizontal: 16,
         backgroundColor: '#f8f9fa',
     },
     header: {
         fontSize: 24,
         fontWeight: 'bold',
-        marginBottom: 16, // Reduced marginBottom for header
+        marginBottom: 16,
         color: '#212529',
         textAlign: 'center',
     },
@@ -300,7 +342,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         paddingHorizontal: 12,
         paddingVertical: 10,
-        marginBottom: 16, // Add margin below search input
+        marginBottom: 16,
         backgroundColor: '#fff',
     },
     loadingContainer: {
@@ -397,6 +439,54 @@ const styles = StyleSheet.create({
         borderRadius: 6,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)', // Semi-transparent overlay
+    },
+    modalContainer: {
+        width: 300,
+        padding: 20,
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        alignItems: 'center',
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 10,
+        color: '#212529',
+    },
+    modalText: {
+        fontSize: 16,
+        color: '#495057',
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    modalButtonContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        width: '100%',
+    },
+    modalButton: {
+        flex: 1,
+        paddingVertical: 10,
+        borderRadius: 6,
+        marginHorizontal: 5,
+        alignItems: 'center',
+    },
+    cancelButton: {
+        backgroundColor: '#dc3545', // Red for cancel
+    },
+    confirmButton: {
+        backgroundColor: '#28a745', // Green for confirm
+    },
+    modalButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });
 

@@ -11,6 +11,7 @@ import { jwtDecode } from "jwt-decode";
 import AdminHomePage from "./HomePage/AdminHomePage"; // Import AdminHomePage
 import AdminOrderHistory from "./Profile/AdminOrderHistory";
 import AdminTransactions from "./Profile/AdminTransactions";
+import TransactionsPage from "./route_mgr/Transactions";
 
 const Tab = createBottomTabNavigator();
 
@@ -93,7 +94,7 @@ const TabNavigator = () => {
             {!isSuperAdmin && (
                 <Tab.Screen
                     name="Transactions"
-                    component={Transactions}
+                    component={isAdmin ? TransactionsPage : Transactions}
                     options={{
                         headerShown: true,
                         headerTitle: "Transactions",
@@ -117,6 +118,9 @@ const TabNavigator = () => {
                     }}
                 />
             )}
+
+
+              
             <Tab.Screen
                 name="Profile"
                 component={ProfileStack}
