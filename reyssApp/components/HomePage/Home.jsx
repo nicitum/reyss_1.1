@@ -18,6 +18,7 @@ import { ipAddress } from "../../urls";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { checkTokenAndRedirect } from "../../services/auth";
 import { jwtDecode } from 'jwt-decode';
+import { Linking } from "react-native";
 
 // Helper function to format epoch time
 const formatDate = (epochTime) => {
@@ -25,6 +26,9 @@ const formatDate = (epochTime) => {
     const date = new Date(epochTime * 1000);
     return date.toLocaleDateString();
 };
+
+
+
 
 const HomePage = () => {
     const [isLoading, setIsLoading] = useState(false);
@@ -36,6 +40,33 @@ const HomePage = () => {
     const [modalVisible, setModalVisible] = useState(false); // Modal visibility
     const [partialAmount, setPartialAmount] = useState(''); // Partial payment input
     const navigation = useNavigation();
+   
+    const [isAdmin, setIsAdmin] = useState(false);
+
+    const checkUserRole = async () => {
+        setIsLoading(true);
+        const userAuthToken = await AsyncStorage.getItem("userAuthToken");
+    
+        if (userAuthToken) {
+            try {
+                const decodedToken = jwtDecode(userAuthToken);
+                if (decodedToken.role === "admin") {
+                    setIsAdmin(true); 
+                } else {
+                    setIsAdmin(false);
+                   
+                }
+            } catch (error) {
+                console.error("Token verification error:", error);
+                setIsAdmin(false);
+                
+            }
+        } else {
+            setIsAdmin(false);
+            
+        }
+        
+    };
 
     // Function to check credit limit
     const checkCreditLimit = useCallback(async () => {
@@ -47,6 +78,7 @@ const HomePage = () => {
             }
             const decodedToken = jwtDecode(userAuthToken);
             const customerId = decodedToken.id;
+           
 
             const creditLimitResponse = await fetch(`http://${ipAddress}:8090/credit-limit?customerId=${customerId}`, {
                 method: 'GET',
@@ -181,6 +213,7 @@ const HomePage = () => {
         useCallback(() => {
             const fetchDataAsync = async () => await fetchData();
             fetchDataAsync();
+            checkUserRole();
 
             BackHandler.addEventListener("hardwareBackPress", handleBackButton);
 
@@ -240,8 +273,28 @@ const HomePage = () => {
                         </View>
                     </View>
 
-                    {/* Customer Details Card */}
-                    <View style={styles.card}>
+                   {isAdmin && (
+                     <View style={styles.card}>
+
+                     <View style={styles.detailRow}>
+                         <Text style={styles.detailLabel}>Name:</Text>
+                         <Text style={styles.detailValue}>{customerName || "N/A"}</Text>
+                     </View>
+                     <View style={styles.detailRow}>
+                         <Text style={styles.detailLabel}>ID:</Text>
+                         <Text style={styles.detailValue}>{customerID || "N/A"}</Text>
+                     </View>
+                     <View style={styles.detailRow}>
+                         <Text style={styles.detailLabel}>Route:</Text>
+                         <Text style={styles.detailValue}>{route || "N/A"}</Text>
+                     </View>
+                 </View>
+
+                   )}
+                   
+
+                    { !isAdmin && (
+                        <View style={styles.card}>
                         <Text style={styles.cardTitle}>Customer Details</Text>
                         <View style={styles.detailRow}>
                             <Text style={styles.detailLabel}>Name:</Text>
@@ -259,14 +312,22 @@ const HomePage = () => {
                             <Text style={styles.detailLabel}>Credit Limit:</Text>
                             <Text style={styles.detailValue}>{creditLimit !== null ? (creditLimit === Infinity ? "N/A (No Limit)" : `₹ ${creditLimit}`) : "Fetching..."}</Text>
                         </View>
-                        <TouchableOpacity style={styles.callButton}>
+
+                        <TouchableOpacity 
+                            style={styles.callButton}
+                            onPress={() => Linking.openURL('tel:9611556661')}
+                        >
                             <MaterialIcons name="call" size={22} color="#333" />
                             <Text style={styles.callText}>Call Us</Text>
                         </TouchableOpacity>
                     </View>
 
+                    )}
+                    
+              
                     {/* Amount Pending Card */}
-                    <View style={[styles.card, styles.amountPendingCard, parseFloat(pendingAmount) > 5000 && styles.highPendingAmount]}>
+                    {!isAdmin &&   (
+                        <View style={[styles.card, styles.amountPendingCard, parseFloat(pendingAmount) > 5000 && styles.highPendingAmount]}>
                         <Text style={styles.cardTitle}>Amount Pending</Text>
                         <View style={styles.amountRow}>
                             {isPendingAmountLoading ? (
@@ -282,6 +343,9 @@ const HomePage = () => {
                             </TouchableOpacity>
                         </View>
                     </View>
+
+                    )}
+                    
 
                     {/* Payment Modal */}
                     <Modal
@@ -336,7 +400,8 @@ const HomePage = () => {
                     </Modal>
 
                     {/* Last Order Details Card */}
-                    <View style={styles.card}>
+                    {!isAdmin && ( 
+                        <View style={styles.card}>
                         <Text style={styles.cardTitle}>Last Order</Text>
                         {lastOrderDetails && lastOrderDetails.lastIndentDate ? (
                             <View>
@@ -361,19 +426,10 @@ const HomePage = () => {
                             <Text style={styles.noOrdersText}>No Orders Placed Yet</Text>
                         )}
                     </View>
+                        
+                    )}
 
-                    {/* View Products Button */}
-                    <TouchableOpacity
-                        style={styles.productsButton}
-                        onPress={() => navigation.navigate("ProductsList")}
-                    >
-                        <Text style={styles.productsButtonText}>View All Products</Text>
-                        <MaterialIcons
-                            name="keyboard-arrow-right"
-                            size={24}
-                            color="#333"
-                        />
-                    </TouchableOpacity>
+                
                 </>
             )}
         </ScrollView>

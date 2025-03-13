@@ -180,7 +180,7 @@ router.get("/assigned-users/:adminId", async (req, res) => {
     // Fetch the users assigned to the given admin by joining the 'admin_assign' and 'users' tables
     
     const fetchQuery = `
-    SELECT u.id, u.username, u.phone, u.customer_id AS cust_id, u.name, u.route, u.status
+    SELECT u.id, u.username, u.phone, u.customer_id AS cust_id, u.name, u.route, u.status,u.delivery_address
     FROM users u
     INNER JOIN admin_assign aa ON u.id = aa.customer_id
     WHERE aa.admin_id = ?

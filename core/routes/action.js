@@ -1520,6 +1520,54 @@ router.get("/item-report", async (req, res) => {
 
 
 
+//invoice push
+
+router.post("/invoice", async (req, res) => {
+    try {
+        // 1. Extract inputs from the request body
+        const { order_id, invoice_id, order_date, invoice_date } = req.body;
+
+        // 2. Validate inputs (basic validation - ensure they are provided)
+        if (!order_id || !invoice_id || !order_date || !invoice_date) {
+            return res.status(400).json({ message: "Missing required fields: order_id, invoice_id, order_date, and invoice_date are all mandatory." });
+        }
+
+        // 3. Prepare the SQL INSERT query
+        // Assuming order_date and invoice_date are expected as Unix timestamps (integers) as per our previous discussion
+        const query = `
+            INSERT INTO invoice (order_id, invoice_id, order_date, invoice_date)
+            VALUES (?, ?, ?, ?)
+        `;
+
+        // 4. Execute the query with parameters
+        const values = [order_id, invoice_id, order_date, invoice_date];
+        const results = await executeQuery(query, values);
+
+        // 5. Handle success and errors
+
+        // Check if the insertion was successful.  For INSERT, 'results' from executeQuery might vary.
+        // It often returns an object with 'affectedRows' or similar in many Node.js MySQL libraries.
+        // Let's assume 'results' has 'affectedRows' if successful. Adapt based on your executeQuery's return.
+        if (results && results.affectedRows > 0) {
+            return res.status(201).json({ // 201 Created - successful resource creation
+                message: "Invoice data inserted successfully",
+                insertedInvoiceId: invoice_id // You can return the invoice_id if needed
+            });
+        } else {
+            // If no rows were affected, but no error was caught, it's an unexpected situation.
+            // Maybe the query executed but didn't insert (e.g., due to data constraints - though we haven't defined any)
+            console.warn("Invoice insertion query executed, but no rows were affected. Check data or database constraints.");
+            return res.status(400).json({ message: "Invoice data insertion failed. No rows were inserted.", detail: "Please check the provided data and database configuration." });
+        }
+
+
+    } catch (error) {
+        console.error("Error inserting invoice data:", error);
+        return res.status(500).json({ message: "Internal server error while inserting invoice data", error: error.message });
+    }
+});
+
+
 module.exports = router;
 
 

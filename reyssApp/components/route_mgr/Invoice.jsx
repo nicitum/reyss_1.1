@@ -330,6 +330,8 @@ const InvoicePage = ({ navigation }) => {
     };
 
     // Generate Invoice and Save as PDF
+   
+    // Generate Invoice and Save as PDF
     const generateInvoice = useCallback(
         async (order) => {
             const orderId = order.id;
@@ -355,13 +357,13 @@ const InvoicePage = ({ navigation }) => {
                     if (uomMatch) {
                         const matchedUom = uomMatch[1].toLowerCase();
                         uom = matchedUom === "ml" || matchedUom === "liters" || matchedUom === "ltr" ? "Ltr" :
-                              matchedUom === "kg" || matchedUom === "g" ? "Kg" : matchedUom.toUpperCase();
+                            matchedUom === "kg" || matchedUom === "g" ? "Kg" : matchedUom.toUpperCase();
                     }
 
                     return {
                         serialNumber: index + 1,
                         name: product.name,
-                        hsn_code: product.hsn_code,
+                        hsn_code: product.hsn_code || "N/A",
                         quantity: op.quantity,
                         uom: uom,
                         rate: basePrice.toFixed(2),
@@ -396,30 +398,55 @@ const InvoicePage = ({ navigation }) => {
             const totalInWords = numberToWords(parseFloat(grandTotal));
 
             const htmlContent = `
-                <div style="font-family: Helvetica, Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
-                    <h1 style="text-align: center; font-size: 24px; margin-bottom: 10px;">SL Enterprises</h1>
-                    <div style="text-align: center; font-size: 14px; margin-bottom: 20px;">
-                        <p>Invoice No: ${invoiceNumber}</p>
-                        <p>Order ID: ${orderId} | Date: ${new Date().toLocaleDateString()}</p>
+                <div style="
+                    font-family: Arial, sans-serif; 
+                    padding: 20px; 
+                    width: 800px; 
+                    margin: 0 auto; 
+                    font-size: 16px; 
+                    line-height: 1.4; 
+                    box-sizing: border-box;
+                ">
+                    <!-- Header -->
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h1 style="font-size: 32px; margin: 0; font-weight: bold; letter-spacing: 1px;">SL Enterprisses</h1>
+                        <div style="font-size: 14px; color: #333;">
+                            <p style="margin: 3px 0;">No. 05, 1st Main, 3rd Cross,</p>
+                            <p style="margin: 3px 0;">Ramakrishna Reddy Layout,</p>
+                            <p style="margin: 3px 0;">Behind HP Software,</p>
+                            <p style="margin: 3px 0;">Mahadevapura Post,</p>
+                            <p style="margin: 3px 0;">Bangalore - 560048</p>
+                        </div>
                     </div>
 
-                    <div style="margin-bottom: 20px;">
-                        <h3 style="margin-bottom: 5px; font-size: 16px;">Customer Information</h3>
-                        <p style="margin: 2px 0;">Name: ${customer.name}</p>
-                        <p style="margin: 2px 0;">Phone: ${customer.phone}</p>
-                        <p style="margin: 2px 0;">Route: ${customer.route}</p>
+                    <!-- Invoice and Customer Information in two columns -->
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                        <div style="flex: 1;">
+                            <h3 style="font-size: 18px; margin: 0 0 5px 0; font-weight: bold;">Customer Information</h3>
+                            <p style="margin: 3px 0; font-weight:bold;">Name: ${customer.name}</p>
+                            <p style="margin: 3px 0;font-weight:bold;">Phone: ${customer.phone}</p>
+                            ${customer.delivery_address?.split(',').map(line => 
+                                `<p style="margin: 3px 0;">${line.trim()}</p>`
+                            ).join('') || '<p style="margin: 3px 0;">N/A</p>'}
+                        </div>
+                        <div style="flex: 1; text-align: right;">
+                            <p style="font-weight: bold; margin: 3px 0;">Invoice No: ${invoiceNumber}</p>
+                            <p style="margin: 3px 0;">Order ID: ${orderId}</p>
+                            <p style="margin: 3px 0;">Date: ${new Date().toLocaleDateString()}</p>
+                        </div>
                     </div>
 
+                    <!-- Products Table -->
                     <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                         <thead>
-                            <tr style="border-bottom: 2px solid #000; background-color: #f5f5f5;">
-                                <th style="padding: 10px; text-align: left; font-size: 12px;">S.No</th>
-                                <th style="padding: 10px; text-align: left; font-size: 12px;">Item Name</th>
-                                <th style="padding: 10px; text-align: left; font-size: 12px;">HSN</th>
-                                <th style="padding: 10px; text-align: right; font-size: 12px;">Qty</th>
-                                <th style="padding: 10px; text-align: left; font-size: 12px;">UOM</th>
-                                <th style="padding: 10px; text-align: right; font-size: 12px;">Rate</th>
-                                <th style="padding: 10px; text-align: right; font-size: 12px;">Value</th>
+                            <tr style="background-color: #f2f2f2; border-bottom: 2px solid #000; border-top: 2px solid #000;">
+                                <th style="padding: 8px; text-align: left; font-weight: bold;">S.No</th>
+                                <th style="padding: 8px; text-align: left; font-weight: bold;">Item Name</th>
+                                <th style="padding: 8px; text-align: left; font-weight: bold;">HSN</th>
+                                <th style="padding: 8px; text-align: right; font-weight: bold;">Qty</th>
+                                <th style="padding: 8px; text-align: left; font-weight: bold;">UOM</th>
+                                <th style="padding: 8px; text-align: right; font-weight: bold;">Rate</th>
+                                <th style="padding: 8px; text-align: right; font-weight: bold;">Value</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -427,13 +454,13 @@ const InvoicePage = ({ navigation }) => {
                                 .map(
                                     (item) => `
                                         <tr style="border-bottom: 1px solid #ddd;">
-                                            <td style="padding: 10px; font-size: 12px;">${item.serialNumber}</td>
-                                            <td style="padding: 10px; font-size: 12px;">${item.name}</td>
-                                            <td style="padding: 10px; font-size: 12px;">${item.hsn_code}</td>
-                                            <td style="padding: 10px; text-align: right; font-size: 12px;">${item.quantity}</td>
-                                            <td style="padding: 10px; font-size: 12px;">${item.uom}</td>
-                                            <td style="padding: 10px; text-align: right; font-size: 12px;">${item.rate}</td>
-                                            <td style="padding: 10px; text-align: right; font-size: 12px;">${item.value}</td>
+                                            <td style="padding: 8px;">${item.serialNumber}</td>
+                                            <td style="padding: 8px;">${item.name}</td>
+                                            <td style="padding: 8px;">${item.hsn_code}</td>
+                                            <td style="padding: 8px; text-align: right;">${item.quantity}</td>
+                                            <td style="padding: 8px;">${item.uom}</td>
+                                            <td style="padding: 8px; text-align: right;">₹${item.rate}</td>
+                                            <td style="padding: 8px; text-align: right;">₹${item.value}</td>
                                         </tr>
                                     `
                                 )
@@ -441,26 +468,34 @@ const InvoicePage = ({ navigation }) => {
                         </tbody>
                     </table>
 
-                    <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
-                        <div style="width: 50%;">
-                            <p style="text-align: right; margin: 5px 0; font-size: 14px;">Subtotal: ₹${subTotal}</p>
-                            <p style="text-align: right; margin: 5px 0; font-size: 14px;">CGST: ₹${cgstAmount}</p>
-                            <p style="text-align: right; margin: 5px 0; font-size: 14px;">SGST: ₹${sgstAmount}</p>
-                            <p style="text-align: right; font-weight: bold; margin: 5px 0; font-size: 16px;">Total: ₹${grandTotal}</p>
-                            <p style="text-align: right; font-style: italic; margin: 5px 0; font-size: 12px;">(${totalInWords})</p>
+                   <!-- Total and Certification Section -->
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                        <!-- Certification Text on Left -->
+                        <div style="width: 50%; text-align: left;">
+                            <div style="margin: 10px 0;">
+                                <p style="margin: 3px 0;">We hereby certify that its products mentioned in the said</p>
+                                <p style="margin: 3px 0;">invoices are warranted to be of the nature and quality</p>
+                                <p style="margin: 3px 0;">which they are purported to be.</p>
+                                <br>
+                                <p style="font-style: italic; font-weight: bold ; font-size: 18px; margin: 3px 0;">(${totalInWords})</p>
+                            </div>
+                        </div>
+                        <!-- Total on Right -->
+                        <div style="width: 40%; text-align: right;">
+                            <p style="margin: 3px 0; font-weight: bold;">Subtotal: ₹${subTotal}</p>
+                            <p style="margin: 3px 0;">CGST: ₹${cgstAmount}</p>
+                            <p style="margin: 3px 0;">SGST: ₹${sgstAmount}</p>
+                            <p style="font-weight: bold; margin: 3px 0; font-size: 20px;">Total: ₹${grandTotal}</p>
+                            <br>
+                             <p style="font-weight: bold; font-size: 20px; margin: 3px 0; text-align:right;">SL Enterprisses</p>
+                             <br>
+                             <br>
+                            <p style="font-weight: bold; font-size: 18px; margin: 3px 0;text-align:right;">Authorized Signatory</p>
+
+                          
                         </div>
                     </div>
 
-                    <div style="position: absolute; bottom: 20px; left: 20px; font-size: 12px; color: #555;">
-                        <p style="margin: 2px 0;"><strong>SL Enterprises</strong></p>
-                        <p style="margin: 2px 0;">No. 05, 1st Main, 3rd Cross,</p>
-                        <p style="margin: 2px 0;">Ramakrishna Reddy Layout,</p>
-                        <p style="margin: 2px 0;">Behind HP Software,</p>
-                        <p style="margin: 2px 0;">Mahadevapura Post,</p>
-                        <p style="margin: 2px 0;">Bangalore - 560048</p>
-                    </div>
-
-                    <p style="text-align: center; font-size: 12px; color: #555; position: absolute; bottom: 20px; width: 100%;">Authorized Signatory</p>
                 </div>
             `;
 
@@ -468,6 +503,7 @@ const InvoicePage = ({ navigation }) => {
                 const { uri } = await Print.printToFileAsync({
                     html: htmlContent,
                     base64: false,
+                    // No fixed height/width; let the content define the page size
                 });
 
                 const filename = `Invoice_${invoiceNumber}.pdf`;
@@ -481,7 +517,6 @@ const InvoicePage = ({ navigation }) => {
         },
         [adminId, fetchOrderProducts, fetchProducts, assignedUsers]
     );
-
     // Generate Bulk Invoices
     const generateBulkInvoices = useCallback(async () => {
         let ordersToProcess = [];

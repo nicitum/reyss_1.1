@@ -28,7 +28,7 @@ const OrdersList = ({ amOrder, pmOrder, selectedDate, navigation }) => {
 
     // AM allowed between 6:00 AM and 8:00 AM (6 <= hour < 8)
     const isAMAllowed = isSelectedDateToday
-        ? currentHour >= 6 && currentHour < 8
+        ? currentHour >= 6 && currentHour < 12
         : true; // Allow AM if not today (no time restriction)
 
     // PM allowed between 12:00 PM and 4:00 PM (12 <= hour < 16)
