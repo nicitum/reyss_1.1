@@ -12,8 +12,8 @@ import {
 } from "react-native";
 import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
-import { ipAddress } from "../../../urls"; // Adjust path if necessary
-import { checkTokenAndRedirect } from "../../../services/auth"; // Adjust path if necessary
+import { ipAddress } from "../../../urls";
+import { checkTokenAndRedirect } from "../../../services/auth";
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
@@ -31,8 +31,11 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
 
     const navigation = useNavigation();
 
-    const filterProducts = useCallback(async () => {
+    const filterProducts = useCallback(() => {
         if (!allProducts || allProducts.length === 0) return;
+
+        setLoading(true);
+        setError(null);
 
         let filtered = [...allProducts];
 
@@ -54,78 +57,26 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
             );
         }
 
-        const fetchPricesForFilteredProducts = async () => {
-            let customerId = currentCustomerId;
-            try {
-                const token = await AsyncStorage.getItem("userAuthToken");
-                if (token) {
-                    const decodedToken = jwtDecode(token);
-                    customerId = decodedToken.id;
-                }
-            } catch (decodeError) {
-                console.error("Error decoding token:", decodeError);
-            }
+        // Apply GST calculations to filtered products
+        const productsWithGst = filtered.map((product) => {
+            const basePrice = product.discountPrice || product.price || 0;
+            const gstRate = product.gst_rate || 0;
+            const gstAmount = (basePrice * gstRate) / 100;
+            const finalPrice = basePrice + gstAmount;
 
-            try {
-                const productsWithPricesPromises = filtered.map(async (product) => {
-                    try {
-                        const priceResponse = await axios.get(`http://${ipAddress}:8090/customer-product-price`, {
-                            params: {
-                                product_id: product.id,
-                                customer_id: customerId,
-                            },
-                        });
-                        const basePrice = priceResponse.data.effectivePrice || product.price || 0;
-                        const gstRate = product.gst_rate || 0; // Assuming gst_rate is in product data
-                        const gstAmount = (basePrice * gstRate) / 100;
-                        const finalPrice = basePrice + gstAmount;
+            return {
+                ...product,
+                effectivePrice: finalPrice,
+                price: basePrice,
+                gstRate: gstRate,
+                gstAmount: gstAmount,
+                finalPrice: finalPrice,
+            };
+        });
 
-                        return {
-                            ...product,
-                            effectivePrice: finalPrice,
-                            price: basePrice,
-                            gstRate: gstRate,
-                            gstAmount: gstAmount,
-                            finalPrice: finalPrice,
-                        };
-                    } catch (priceError) {
-                        console.error(`Error fetching price for product ${product.id}:`, priceError);
-                        const basePrice = product.discountPrice || product.price || 0;
-                        const gstRate = product.gst_rate || 0;
-                        const gstAmount = (basePrice * gstRate) / 100;
-                        const finalPrice = basePrice + gstAmount;
-                        return {
-                            ...product,
-                            effectivePrice: finalPrice,
-                            price: basePrice,
-                            gstRate: gstRate,
-                            gstAmount: gstAmount,
-                            finalPrice: finalPrice,
-                        };
-                    }
-                });
-
-                const productsWithPrices = await Promise.all(productsWithPricesPromises);
-                setProducts(productsWithPrices);
-                console.log("Products with prices and GST:", productsWithPrices);
-            } catch (promiseAllError) {
-                console.error("Error fetching prices:", promiseAllError);
-                setError("Error fetching product prices.");
-                setProducts([]);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (filtered.length > 0) {
-            setLoading(true);
-            setError(null);
-            await fetchPricesForFilteredProducts();
-        } else {
-            setProducts([]);
-            setLoading(false);
-        }
-    }, [searchQuery, selectedCategory, selectedBrand, allProducts, currentCustomerId, ipAddress]);
+        setProducts(productsWithGst);
+        setLoading(false);
+    }, [searchQuery, selectedCategory, selectedBrand, allProducts]);
 
     const fetchProducts = async () => {
         try {
@@ -142,7 +93,6 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
            
             const fetchedProducts = response.data;
             setAllProducts(fetchedProducts);
-            console.log("Fetched Products Data:", fetchedProducts);
 
             const productCategories = [...new Set(fetchedProducts.map((product) => product.category).filter(Boolean))];
             setCategories(productCategories);
@@ -274,8 +224,6 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
                                 <TouchableOpacity
                                     style={styles.addButton}
                                     onPress={() => {
-                                        console.log("Adding product:", item);
-                                        console.log("Product being added with price:", item.finalPrice);
                                         onAddProduct({
                                             ...item,
                                             price: item.finalPrice,

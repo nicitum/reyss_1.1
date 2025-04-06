@@ -135,8 +135,12 @@ const PlaceOrderPage = ({ route }) => {
 
                             const productCategoryLower = product.category.trim().toLowerCase();
 
-                            if (productCategoryLower.includes("others")) {
-                                return false;
+                            if (productCategoryLower.includes("others") ||
+                                productCategoryLower.includes("paneer") ||
+                                productCategoryLower.includes("ghee") ||
+                                productCategoryLower.includes("butter") ||
+                                productCategoryLower.includes("butter milk")) {
+                                    return false;
                             }
 
                             return true;
@@ -198,7 +202,7 @@ const PlaceOrderPage = ({ route }) => {
         try {
             const currentProducts = orderDetails?.products || [];
             const isDuplicate = currentProducts.some((existingProduct) => existingProduct.product_id === product.id);
-
+    
             if (isDuplicate) {
                 Toast.show({
                     type: 'info',
@@ -207,21 +211,45 @@ const PlaceOrderPage = ({ route }) => {
                 });
                 return;
             }
-
+    
+            // Fetch customer-specific price
+            const token = await AsyncStorage.getItem("userAuthToken");
+            const decodedToken = jwtDecode(token);
+            const custId = decodedToken.id;
+            const customerPriceCheckUrl = `http://${ipAddress}:8090/customer_price_check?customer_id=${custId}`;
+            let effectivePriceToUse = product.effectivePrice; // Default to existing effectivePrice
+    
+            const customerPriceResponse = await fetch(customerPriceCheckUrl, {
+                method: 'GET',
+                headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
+            });
+    
+            if (customerPriceResponse.ok) {
+                const customerPrices = await customerPriceResponse.json();
+                const specificPrice = customerPrices.find(item => item.product_id === product.id);
+                if (specificPrice && specificPrice.customer_price !== undefined && specificPrice.customer_price !== null) {
+                    effectivePriceToUse = specificPrice.customer_price;
+                }
+                // No fallback to fetchLatestPriceFromOrderProducts here as per user request
+            } else {
+                console.error("Failed to fetch customer-specific prices:", customerPriceResponse.status, await customerPriceResponse.text());
+                // Keeping the default effectivePrice if the API call fails
+            }
+    
             const newProduct = {
                 category: product.category,
                 name: product.name,
-                price: product.effectivePrice,
+                price: effectivePriceToUse, // Use the fetched or default effective price
                 product_id: product.id,
                 quantity: 1,
             };
-
+    
             const updatedProducts = [...currentProducts, newProduct];
             setOrderDetails({ ...orderDetails, products: updatedProducts });
             console.log("orderDetails after handleAddProduct:", orderDetails); // <==== ADD THIS LINE
             setShowSearchModal(false);
             setTotalOrderAmount(calculateTotalAmount(updatedProducts)); // Calculate and set total amount
-
+    
         } catch (error) {
             console.error("Error adding product:", error);
             Toast.show({
@@ -578,7 +606,7 @@ const PlaceOrderPage = ({ route }) => {
                         <View style={styles.orderDetailsContainer}>
                             <Text style={styles.orderDetailsText}>Date: {moment(selectedDate).format("YYYY-MM-DD")}</Text>
                             <Text style={styles.orderDetailsText}>Shift: {shift}</Text>
-                            <Text style={styles.orderDetailsText}>Total Amount: ₹{totalOrderAmount.toFixed(2)}</Text> {/* Display total amount */}
+                            <Text style={styles.orderDetailsText}>Total Amount (Inclusive Gst%): ₹{totalOrderAmount.toFixed(2)}</Text> {/* Display total amount */}
                         </View>
 
                         <OrderProductsList

@@ -37,7 +37,7 @@ const SearchProductModalAdmin = ({ isVisible, onClose, onAddProduct, currentCust
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
             const decodedToken = jwtDecode(token);
-            const adminId = decodedToken.id1; // Assuming admin ID is stored as id1 in the token
+            const adminId = decodedToken.id1;
 
             const response = await axios.get(`http://${ipAddress}:8090/assigned-users/${adminId}`, {
                 headers: {
@@ -48,7 +48,6 @@ const SearchProductModalAdmin = ({ isVisible, onClose, onAddProduct, currentCust
 
             const assignedUsers = response.data.assignedUsers;
             if (assignedUsers && assignedUsers.length > 0) {
-                // Assuming currentCustomerId comes from the selected order's customer_id
                 const matchedCustomer = assignedUsers.find(user => user.cust_id === currentCustomerId);
                 if (matchedCustomer) {
                     setAdminCustomerId(matchedCustomer.cust_id);
@@ -64,8 +63,11 @@ const SearchProductModalAdmin = ({ isVisible, onClose, onAddProduct, currentCust
         }
     };
 
-    const filterProducts = useCallback(async () => {
+    const filterProducts = useCallback(() => {
         if (!allProducts || allProducts.length === 0) return;
+
+        setLoading(true);
+        setError(null);
 
         let filtered = [...allProducts];
 
@@ -87,80 +89,32 @@ const SearchProductModalAdmin = ({ isVisible, onClose, onAddProduct, currentCust
             );
         }
 
-        const fetchPricesForFilteredProducts = async () => {
-            let customerId = adminCustomerId || currentCustomerId; // Use adminCustomerId if available, else fallback to currentCustomerId
-            if (!customerId) {
-                setError("Customer ID not available for price filtering.");
-                setLoading(false);
-                return;
-            }
+        // Apply GST calculations to filtered products
+        const productsWithGst = filtered.map((product) => {
+            const basePrice = product.discountPrice || product.price || 0;
+            const gstRate = product.gst_rate || 0;
+            const gstAmount = (basePrice * gstRate) / 100;
+            const finalPrice = basePrice + gstAmount;
 
-            try {
-                const productsWithPricesPromises = filtered.map(async (product) => {
-                    try {
-                        const priceResponse = await axios.get(`http://${ipAddress}:8090/customer-product-price`, {
-                            params: {
-                                product_id: product.id,
-                                customer_id: customerId,
-                            },
-                        });
-                        const basePrice = priceResponse.data.effectivePrice || product.price || 0;
-                        const gstRate = product.gst_rate || 0;
-                        const gstAmount = (basePrice * gstRate) / 100;
-                        const finalPrice = basePrice + gstAmount;
+            return {
+                ...product,
+                effectivePrice: finalPrice,
+                price: basePrice,
+                gstRate: gstRate,
+                gstAmount: gstAmount,
+                finalPrice: finalPrice,
+            };
+        });
 
-                        return {
-                            ...product,
-                            effectivePrice: finalPrice,
-                            price: basePrice,
-                            gstRate: gstRate,
-                            gstAmount: gstAmount,
-                            finalPrice: finalPrice,
-                        };
-                    } catch (priceError) {
-                        console.error(`Error fetching price for product ${product.id}:`, priceError);
-                        const basePrice = product.discountPrice || product.price || 0;
-                        const gstRate = product.gst_rate || 0;
-                        const gstAmount = (basePrice * gstRate) / 100;
-                        const finalPrice = basePrice + gstAmount;
-                        return {
-                            ...product,
-                            effectivePrice: finalPrice,
-                            price: basePrice,
-                            gstRate: gstRate,
-                            gstAmount: gstAmount,
-                            finalPrice: finalPrice,
-                        };
-                    }
-                });
-
-                const productsWithPrices = await Promise.all(productsWithPricesPromises);
-                setProducts(productsWithPrices);
-                console.log("Products with prices and GST for customer:", productsWithPrices);
-            } catch (promiseAllError) {
-                console.error("Error fetching prices:", promiseAllError);
-                setError("Error fetching product prices.");
-                setProducts([]);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (filtered.length > 0) {
-            setLoading(true);
-            setError(null);
-            await fetchPricesForFilteredProducts();
-        } else {
-            setProducts([]);
-            setLoading(false);
-        }
-    }, [searchQuery, selectedCategory, selectedBrand, allProducts, adminCustomerId, currentCustomerId, ipAddress]);
+        setProducts(productsWithGst);
+        setLoading(false);
+    }, [searchQuery, selectedCategory, selectedBrand, allProducts]);
 
     const fetchProducts = async () => {
         try {
             setLoading(true);
             setError(null);
-            const userAuthToken = await checkTokenAndRedirect(navigation);
+            const userAuthToken = await checkTokenAndRedirectfd(navigation);
 
             const response = await axios.get(`http://${ipAddress}:8090/products`, {
                 headers: {
@@ -171,7 +125,6 @@ const SearchProductModalAdmin = ({ isVisible, onClose, onAddProduct, currentCust
 
             const fetchedProducts = response.data;
             setAllProducts(fetchedProducts);
-            console.log("Fetched Products Data:", fetchedProducts);
 
             const productCategories = [...new Set(fetchedProducts.map((product) => product.category).filter(Boolean))];
             setCategories(productCategories);
@@ -190,7 +143,7 @@ const SearchProductModalAdmin = ({ isVisible, onClose, onAddProduct, currentCust
 
     useEffect(() => {
         if (isVisible) {
-            fetchAssignedUsers(); // Fetch assigned users when modal opens
+            fetchAssignedUsers();
             fetchProducts();
         } else {
             setSearchQuery("");
@@ -203,10 +156,10 @@ const SearchProductModalAdmin = ({ isVisible, onClose, onAddProduct, currentCust
     }, [isVisible, currentCustomerId]);
 
     useEffect(() => {
-        if (isVisible && allProducts.length > 0 && adminCustomerId) {
+        if (isVisible && allProducts.length > 0) {
             filterProducts();
         }
-    }, [isVisible, searchQuery, selectedCategory, selectedBrand, allProducts, adminCustomerId, filterProducts]);
+    }, [isVisible, searchQuery, selectedCategory, selectedBrand, allProducts, filterProducts]);
 
     return (
         <Modal
@@ -305,8 +258,6 @@ const SearchProductModalAdmin = ({ isVisible, onClose, onAddProduct, currentCust
                                 <TouchableOpacity
                                     style={styles.addButton}
                                     onPress={() => {
-                                        console.log("Adding product:", item);
-                                        console.log("Product being added with price:", item.finalPrice);
                                         onAddProduct({
                                             ...item,
                                             price: item.finalPrice,
@@ -332,7 +283,6 @@ const SearchProductModalAdmin = ({ isVisible, onClose, onAddProduct, currentCust
     );
 };
 
-// Styles remain unchanged
 const styles = StyleSheet.create({
     modalBackground: {
         flex: 1,

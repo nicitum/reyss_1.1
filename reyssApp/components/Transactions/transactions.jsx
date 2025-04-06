@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, ScrollView, ActivityIndicator, Alert, Touchable
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { ipAddress } from '../../urls';
 
 const TransactionsPage = () => {
     const [transactions, setTransactions] = useState([]);
@@ -25,7 +26,7 @@ const TransactionsPage = () => {
             console.log("Fetched Customer ID:", fetchedCustomerId);
 
             // Build query params
-            let url = `http://192.168.1.13:8090/fetch-payment-transactions?customer_id=${fetchedCustomerId}`;
+            let url = `http://${ipAddress}:8090/fetch-payment-transactions?customer_id=${fetchedCustomerId}`;
             if (selectedDate) {
                 const formattedDate = selectedDate.toISOString().split('T')[0]; // YYYY-MM-DD
                 url += `&date=${formattedDate}`;

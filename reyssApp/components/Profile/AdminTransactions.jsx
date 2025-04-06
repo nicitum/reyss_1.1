@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ipAddress } from '../../urls';
 
 const AdminTransactions = () => {
     const [transactions, setTransactions] = useState([]);
@@ -19,7 +20,7 @@ const AdminTransactions = () => {
     // Fetch all payment transactions and customer names
     const fetchTransactions = async () => {
         try {
-            let url = `http://192.168.1.13:8090/fetch-all-payment-transactions`;
+            let url = `http://${ipAddress}:8090/fetch-all-payment-transactions`;
             if (selectedDate) {
                 const formattedDate = selectedDate.toISOString().split('T')[0];
                 url += `?date=${formattedDate}`;
@@ -47,7 +48,7 @@ const AdminTransactions = () => {
                 data.transactions.map(async (transaction) => {
                     try {
                         const nameResponse = await fetch(
-                            `http://192.168.1.13:8090/fetch-names?customer_id=${transaction.customer_id}`,
+                            `http://${ipAddress}:8090/fetch-names?customer_id=${transaction.customer_id}`,
                             {
                                 method: 'GET',
                                 headers: {

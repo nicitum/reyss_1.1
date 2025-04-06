@@ -429,6 +429,19 @@ const HomePage = () => {
                         
                     )}
 
+                      {/* View Products Button */}
+                      <TouchableOpacity
+                        style={styles.productsButton}
+                        onPress={() => navigation.navigate("ProductsList")}
+                    >
+                        <Text style={styles.productsButtonText}>View All Products</Text>
+                        <MaterialIcons
+                            name="keyboard-arrow-right"
+                            size={24}
+                            color="#333"
+                        />
+                    </TouchableOpacity>
+
                 
                 </>
             )}

@@ -4,10 +4,20 @@ import { Calendar } from "react-native-calendars";
 import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 
 const CalendarComponent = ({ selectedDate, handleDatePress }) => {
+    const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+
+    const handleDayPress = (day) => {
+        if (day.dateString > today) {
+            // If the selected date is in the future, do nothing
+            return;
+        }
+        handleDatePress(day);
+    };
+
     return (
         <View style={styles.container}>
             <Calendar
-                onDayPress={(day) => handleDatePress(day)}
+                onDayPress={handleDayPress}
                 markedDates={{
                     [selectedDate]: {
                         selected: true,
@@ -25,15 +35,22 @@ const CalendarComponent = ({ selectedDate, handleDatePress }) => {
                 )}
                 dayComponent={({ date, state }) => {
                     const isSelected = date.dateString === selectedDate;
+                    const isDisabled = date.dateString > today; // Disable future dates
 
                     return (
                         <View style={styles.dayWrapper}>
                             <TouchableOpacity
                                 style={[styles.dayContainer, isSelected && styles.selectedDay]}
-                                onPress={() => handleDatePress(date)}
+                                onPress={() => handleDayPress(date)}
+                                disabled={isDisabled} // Disable the button for future dates
                             >
                                 <Text
-                                    style={[styles.dayText, state === "disabled" && styles.disabledDayText, isSelected && styles.selectedDayText]}
+                                    style={[
+                                        styles.dayText,
+                                        state === "disabled" && styles.disabledDayText,
+                                        isSelected && styles.selectedDayText,
+                                        isDisabled && styles.disabledDayText, // Apply disabled style for future dates
+                                    ]}
                                 >
                                     {date.day}
                                 </Text>

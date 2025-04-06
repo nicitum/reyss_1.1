@@ -160,103 +160,138 @@ const LoadingSlipPage = () => {
     };
 
     const generateExcelReport = async (productsData, reportType, routeName = '') => {
-        if (!productsData || productsData.length === 0) {
-            Alert.alert("No Products", "No products to include in the loading slip.");
-            return;
-        }
-    
-        setLoading(true);
-        try {
-            const wb = XLSX.utils.book_new();
-    
-            let totalQuantity = 0;
-            let totalBaseUnitQuantity = 0;
-            let totalCrates = 0;
-    
-            productsData.forEach(product => {
-                totalQuantity += product.quantity;
-                totalBaseUnitQuantity += parseFloat(product.baseUnitQuantity);
-                totalCrates += product.crates;
-            });
-    
-            const wsData = [
-                [`${reportType} - Route ${routeName}`],
-                [],
-                ["Products", "Quantity in base units (eaches)", "Quantity in base units (kgs/lts)", "Crates"],
-                ...productsData.map(product => [
-                    product.name,
-                    product.quantity,
-                    product.baseUnitQuantity,
-                    product.crates
-                ]),
-                ["Totals", totalQuantity.toFixed(2), totalBaseUnitQuantity.toFixed(2), totalCrates]
-            ];
-    
-            const ws = XLSX.utils.aoa_to_sheet(wsData);
-            XLSX.utils.book_append_sheet(wb, ws, `${reportType} Data`);
-    
-            const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-            const base64Workbook = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
-    
-            const filename = `${reportType.replace(/\s/g, '')}-Route-${routeName}.xlsx`;
-            const mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    
-            if (Platform.OS === 'web') {
-                const blob = new Blob([wbout], { type: mimetype });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                if (Platform.OS === 'web') {
-                    Alert.alert('Success', `${reportType} Generated Successfully! File downloaded in your browser.`);
-                }
-            } else {
-                const fileDir = FileSystem.documentDirectory;
-                const fileUri = fileDir + filename;
-    
-                await FileSystem.writeAsStringAsync(fileUri, base64Workbook, {
-                    encoding: FileSystem.EncodingType.Base64
-                });
-    
-                if (Platform.OS === 'android') {
-                    save(fileUri, filename, mimetype, reportType);
-                } else {
-                    try {
-                        await Sharing.shareAsync(fileUri, {
-                            mimeType: mimetype,
-                            dialogTitle: `${reportType} Report`,
-                            UTI: 'com.microsoft.excel.xlsx'
-                        });
-                        if (Platform.OS !== 'android') {
-                            Alert.alert('Success', `${reportType} Generated and Shared Successfully!`);
-                        }
-                    } catch (shareError) {
-                        console.error("Sharing Error:", shareError);
-                        if (Platform.OS === 'android') {
-                            ToastAndroid.show(`Sharing ${reportType} Failed.`, ToastAndroid.SHORT);
-                        } else {
-                            Alert.alert("Sharing Failed", `Error occurred while trying to share the ${reportType.toLowerCase()}.`);
-                        }
-                        setError("Error sharing file.");
-                    }
-                }
-            }
-        } catch (e) {
-            console.error("Excel Generation Error:", e);
-            if (Platform.OS === 'android') {
-                ToastAndroid.show(`Failed to generate ${reportType}.`, ToastAndroid.SHORT);
-            } else {
-                Alert.alert("Generation Failed", `Error generating Excel ${reportType.toLowerCase()}.`);
-            }
-            setError("Error generating Excel file.");
-        } finally {
-            setLoading(false);
-        }
-    };
+
+        if (!productsData || (Array.isArray(productsData) && productsData.length === 0) || (typeof productsData === 'object' && productsData.productList.length === 0)) {
+            Alert.alert("No Products", "No products to include in the loading slip.");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const wb = XLSX.utils.book_new();
+    
+            let wsData;
+            let filename;
+
+            if (reportType === 'Loading Slip') {
+                const { productList, brandTotals } = productsData;
+                let totalQuantity = 0;
+                let totalBaseUnitQuantity = 0;
+                let totalCrates = 0;
+
+                productList.forEach(product => {
+                    totalQuantity += product.quantity;
+                    totalBaseUnitQuantity += parseFloat(product.baseUnitQuantity);
+                    totalCrates += product.crates;
+                });
+
+                wsData = [
+                    [`${reportType} - Route ${routeName}`],
+                   ,
+                    ["Products", "Quantity in base units (eaches)", "Quantity in base units (kgs/lts)", "Crates"],
+                    ...productList.map(product => [
+                        product.name,
+                        product.quantity,
+                        product.baseUnitQuantity,
+                        product.crates
+                    ]),
+                    ["Totals", totalQuantity.toFixed(2), totalBaseUnitQuantity.toFixed(2), totalCrates],
+                   , // Add some space
+                    ["Brand", "Total Crates"],
+                    ...brandTotals.map(brandTotal => [brandTotal.brand, brandTotal.totalCrates])
+                ];
+                filename = `${reportType.replace(/\s/g, '')}-Route-${routeName}.xlsx`;
+            } else {
+                // Keep the existing logic for other report types if needed
+                let totalQuantity = 0;
+                let totalBaseUnitQuantity = 0;
+                let totalCrates = 0;
+
+                productsData.forEach(product => {
+                    totalQuantity += product.quantity;
+                    totalBaseUnitQuantity += parseFloat(product.baseUnitQuantity);
+                    totalCrates += product.crates;
+                });
+
+                wsData = [
+                    [`${reportType} - Route ${routeName}`],
+                   ,
+                    ["Products", "Quantity in base units (eaches)", "Quantity in base units (kgs/lts)", "Crates"],
+                    ...productsData.map(product => [
+                        product.name,
+                        product.quantity,
+                        product.baseUnitQuantity,
+                        product.crates
+                    ]),
+                    ["Totals", totalQuantity.toFixed(2), totalBaseUnitQuantity.toFixed(2), totalCrates]
+                ];
+                filename = `${reportType.replace(/\s/g, '')}-Route-${routeName}.xlsx`;
+            }
+
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, `${reportType} Data`);
+
+            const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+            const base64Workbook = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+
+            const mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+            if (Platform.OS === 'web') {
+                const blob = new Blob([wbout], { type: mimetype });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                if (Platform.OS === 'web') {
+                    Alert.alert('Success', `${reportType} Generated Successfully! File downloaded in your browser.`);
+                }
+            } else {
+                const fileDir = FileSystem.documentDirectory;
+                const fileUri = fileDir + filename;
+
+                await FileSystem.writeAsStringAsync(fileUri, base64Workbook, {
+                    encoding: FileSystem.EncodingType.Base64
+                });
+
+                if (Platform.OS === 'android') {
+                    save(fileUri, filename, mimetype, reportType);
+                } else {
+                    try {
+                        await Sharing.shareAsync(fileUri, {
+                            mimeType: mimetype,
+                            dialogTitle: `${reportType} Report`,
+                            UTI: 'com.microsoft.excel.xlsx'
+                        });
+                        if (Platform.OS !== 'android') {
+                            Alert.alert('Success', `${reportType} Generated and Shared Successfully!`);
+                        }
+                    } catch (shareError) {
+                        console.error("Sharing Error:", shareError);
+                        if (Platform.OS === 'android') {
+                            ToastAndroid.show(`Sharing ${reportType} Failed.`, ToastAndroid.SHORT);
+                        } else {
+                            Alert.alert("Sharing Failed", `Error occurred while trying to share the ${reportType.toLowerCase()}.`);
+                        }
+                        setError("Error sharing file.");
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Excel Generation Error:", e);
+            if (Platform.OS === 'android') {
+                ToastAndroid.show(`Failed to generate ${reportType}.`, ToastAndroid.SHORT);
+            } else {
+                Alert.alert("Generation Failed", `Error generating Excel ${reportType.toLowerCase()}.`);
+            }
+            setError("Error generating Excel file.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const generateDeliveryExcelReport = async (usersForRoute, routeName) => {
         const reportType = 'Delivery Slip';
@@ -391,7 +426,9 @@ const LoadingSlipPage = () => {
 
     const createLoadingSlipDataForExcelForRoute = async (usersForRoute) => {
         const consolidatedProducts = new Map();
+        const unitRegex = /(\d+\.?\d*)\s*(ML|LTR|KG|GRMS|G|GM|ML)/i;
     
+        // Process each user's orders
         for (const user of usersForRoute) {
             const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
             if (order) {
@@ -406,57 +443,35 @@ const LoadingSlipPage = () => {
                     }
                     const productsData = await productsResponse.json();
                     productsData.forEach(product => {
-                        console.log("--- Processing Product: ---");
-                        console.log("Product Name:", product.name);
-    
+                        // Extract quantity and unit
+                        const match = product.name.match(unitRegex);
                         let quantityValue = 0;
                         let unit = '';
-                        const nameParts = product.name.split(" ");
-                        console.log("nameParts:", nameParts);
-                        const lastPart = nameParts[nameParts.length - 1];
-                        const secondLastPart = nameParts[nameParts.length - 2];
-                        console.log("lastPart:", lastPart);
-                        console.log("secondLastPart:", secondLastPart);
     
-                        const lowerLastPart = lastPart.toLowerCase();
-                        const lowerSecondLastPart = secondLastPart ? secondLastPart.toLowerCase() : '';
-                        console.log("lowerLastPart:", lowerLastPart);
-                        console.log("lowerSecondLastPart:", lowerSecondLastPart);
-    
-                        if (lowerLastPart.includes('kg') || lowerLastPart.includes('kgs')) {
-                            quantityValue = parseFloat(nameParts[nameParts.length - 2] === '1' ? '1' : nameParts[nameParts.length - 2]);
-                            unit = 'kg';
-                        } else if (lowerLastPart.includes('ltr') || lowerLastPart.includes('liter')) {
-                            quantityValue = parseFloat(nameParts[nameParts.length - 2] === '1' ? '1' : nameParts[nameParts.length - 2]);
-                            unit = 'ltr';
-                        } else if (lowerLastPart.includes('gm') || lowerLastPart.includes('gms') || lowerLastPart.includes('g')) {
-                            quantityValue = parseFloat(nameParts[nameParts.length - 2]);
-                            unit = 'gm';
-                        } else if (lowerLastPart.includes('ml')) {
-                            quantityValue = parseFloat(nameParts[nameParts.length - 2]);
-                            unit = 'ml';
-                        } else if (lowerLastPart === 'gms' && lowerSecondLastPart === '1000') {
-                            quantityValue = 1;
-                            unit = 'kg';
-                        }
-                        console.log("quantityValue (parsed):", quantityValue);
-                        console.log("unit (detected):", unit);
-    
-                        let baseUnitQuantity = 0;
-                        if (unit === 'ml') {
-                            baseUnitQuantity = (quantityValue * product.quantity) / 1000;
-                        } else if (unit === 'gm') {
-                            baseUnitQuantity = (quantityValue * product.quantity) / 1000;
-                        } else if (unit === 'ltr' || unit === 'liter' || unit === 'kg' || unit === 'kgs') {
-                            baseUnitQuantity = quantityValue * product.quantity;
+                        if (match) {
+                            quantityValue = parseFloat(match[1]);
+                            unit = match[2].toLowerCase();
+                            if (unit === 'grms' || unit === 'g' || unit === 'gm') unit = 'gm';
+                            else if (unit === 'ltr') unit = 'ltr';
+                            else if (unit === 'kg') unit = 'kg';
+                            else if (unit === 'ml') unit = 'ml';
                         } else {
-                            baseUnitQuantity = product.quantity;
+                            quantityValue = 1;
+                            unit = 'unit';
                         }
-                        console.log("baseUnitQuantity:", baseUnitQuantity);
     
+                        // Calculate base unit quantity
+                        let baseUnitQuantity = 0;
+                        if (unit === 'ml') baseUnitQuantity = (quantityValue * product.quantity) / 1000;
+                        else if (unit === 'gm') baseUnitQuantity = (quantityValue * product.quantity) / 1000;
+                        else if (unit === 'ltr') baseUnitQuantity = quantityValue * product.quantity;
+                        else if (unit === 'kg') baseUnitQuantity = quantityValue * product.quantity;
+                        else baseUnitQuantity = product.quantity;
+    
+                        // Calculate crates
                         const crates = Math.floor(baseUnitQuantity / 12);
-                        console.log("crates:", crates);
     
+                        // Consolidate product data
                         const currentProductInfo = consolidatedProducts.get(product.name);
                         if (currentProductInfo) {
                             consolidatedProducts.set(product.name, {
@@ -479,17 +494,30 @@ const LoadingSlipPage = () => {
                 }
             }
         }
-        const productListForExcel = [];
+    
+        // Prepare product list for Excel
+        const productListForExcel = Array.from(consolidatedProducts.entries()).map(([productName, productInfo]) => ({
+            name: productName,
+            quantity: productInfo.totalQuantity,
+            category: productInfo.category,
+            baseUnitQuantity: productInfo.totalBaseUnitQuantity.toFixed(2),
+            crates: productInfo.totalCrates
+        }));
+    
+        // Calculate brand-wise total crates
+        const brandTotalsMap = new Map();
         for (const [productName, productInfo] of consolidatedProducts.entries()) {
-            productListForExcel.push({
-                name: productName,
-                quantity: productInfo.totalQuantity,
-                category: productInfo.category,
-                baseUnitQuantity: productInfo.totalBaseUnitQuantity.toFixed(2),
-                crates: productInfo.totalCrates
-            });
+            const brand = productName.split(' ')[0].toUpperCase(); // Extract brand as first word
+            const currentTotal = brandTotalsMap.get(brand) || 0;
+            brandTotalsMap.set(brand, currentTotal + productInfo.totalCrates);
         }
-        return productListForExcel;
+        const brandTotals = Array.from(brandTotalsMap, ([brand, totalCrates]) => ({ brand, totalCrates }));
+    
+        // Return both product list and brand totals
+        return {
+            productList: productListForExcel,
+            brandTotals: brandTotals
+        };
     };
 
     const groupUsersByRoute = (usersWithOrders) => {

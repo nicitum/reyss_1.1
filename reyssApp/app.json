@@ -5,8 +5,6 @@
     "scheme": "reyss-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/SL.png",
-    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/SL.png",
@@ -17,32 +15,30 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/SL.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.smoke221.reyssApp",
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      "package": "com.reyss.reyssApp",
+      "permissions": ["android.permission.INTERNET"] 
     },
     "web": {
       "favicon": "./assets/SL.png"
     },
     "extra": {
       "eas": {
-        "projectId": "026bd023-4864-4eae-bfa1-1e50fd5b6b6f"
+        "projectId": "ec4e0a74-8569-4875-81c0-80f866ae582c"
       }
     },
+    "owner": "togiwo_1",
     "plugins": [
       [
-        "expo-image-picker",
+        "expo-build-properties",
         {
-          "photosPermission": "The app needs access to your photos to let you report defective products.",
-          "cameraPermission": "The app needs access to your camera to let you report defective products."
+          "android": {
+            "usesCleartextTraffic": true, 
+            "permissions": ["android.permission.INTERNET"] 
+          }
         }
-      ],
-      "expo-asset"
-    ],
-    "owner": "zic_013"
+      ]
+    ]
   }
 }

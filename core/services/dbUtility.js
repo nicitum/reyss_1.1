@@ -25,7 +25,7 @@ const findUserByUserName = async (userName) => {
 const getUserById = async (customerId) => {
   try {
     const userQuery =
-      "SELECT customer_id, name, username, phone, delivery_address, route FROM users WHERE customer_id = ?";
+      "SELECT customer_id, name, username, phone, delivery_address, route,auto_am_order,auto_pm_order FROM users WHERE customer_id = ?";
     const [user] = await executeQuery(userQuery, [customerId]);
 
     const latestOrderQuery = `SELECT 
@@ -282,7 +282,7 @@ const addOrderProducts = async (customerId, orderId, products) => {
               }
           }
 
-          const query = `INSERT INTO order_products (order_id, product_id, quantity, price, name, category) VALUES (?, ?, ?, ?, ?, ?);`;
+          const query = `INSERT INTO order_products (order_id, product_id, quantity, price, name, category,gst_rate) VALUES (?, ?, ?, ?, ?, ?, ?);`;
 
           return {
               query: query,
@@ -293,6 +293,7 @@ const addOrderProducts = async (customerId, orderId, products) => {
                   effectivePrice,
                   productData.name,
                   productData.category,
+                  productData.gst_rate
               ],
           };
       });
@@ -399,6 +400,16 @@ const addUser = async (userDetails) => {
       userDetails.password,
       userDetails.route,
     ]);
+
+    // Execute the UPDATE query to set username to customer_id after insertion
+    const updateUsernameQuery = `
+      UPDATE users
+      SET username = customer_id
+      WHERE customer_id = ?;
+    `;
+
+    await executeQuery(updateUsernameQuery, [userDetails.customer_id]);
+
   } catch (error) {
     console.error("Error addUser dbUtility", error.message);
     throw new Error("Error in addUser.");
@@ -533,8 +544,8 @@ const getAllUsers = async (searchQuery) => {
 const addProduct = async (productData) => {
   try {
     const query = `
-      INSERT INTO products (name, brand, category, price, discountPrice, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO products (name, brand, category, price, discountPrice, created_at, updated_at, hsn_code, gst_rate)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -545,9 +556,13 @@ const addProduct = async (productData) => {
       productData.discountPrice,
       productData.created_at,
       productData.updated_at,
+      productData.hsn_code,
+      productData.gst_rate
     ];
 
+   
     const response = await executeQuery(query, values);
+   
     return response;
   } catch (error) {
     console.error("Error in addProduct dbUtility:", error);
@@ -733,16 +748,17 @@ const checkExistingOrder = async (customerId, orderDate, orderType) => {
   }
 };
 
+
 const updateProduct = async (
   id,
-  { name, brand, category, price, discountPrice, uom }
+  { name, brand, category, price, discountPrice, uom, hsn_code, gst_rate }
 ) => {
   try {
     const updated_at = Math.floor(Date.now() / 1000);
 
     const query = `
       UPDATE products 
-      SET name = ?, brand = ?, category = ?, price = ?, discountPrice = ?, uom = ?, updated_at = ?
+      SET name = ?, brand = ?, category = ?, price = ?, discountPrice = ?, uom = ?, updated_at = ?, hsn_code = ?, gst_rate = ?
       WHERE id = ?
     `;
 
@@ -753,18 +769,18 @@ const updateProduct = async (
       price,
       discountPrice,
       uom,
-      updated_at,
+      updated_at,  // Moved up to match the query
+      hsn_code,
+      gst_rate,
       id,
     ];
 
     const result = await executeQuery(query, values);
 
-    // Check if any rows were updated
     if (result.affectedRows === 0) {
-      return null; // No product was updated
+      return null;
     }
 
-    // Return the updated product details
     return {
       id,
       name,
@@ -774,6 +790,8 @@ const updateProduct = async (
       discountPrice,
       uom,
       updated_at,
+      hsn_code,
+      gst_rate
     };
   } catch (error) {
     console.error("Error in productDbUtility updateProduct:", error);

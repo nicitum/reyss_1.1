@@ -30,7 +30,33 @@ const InvoicePage = ({ navigation }) => {
         hideDatePicker();
     };
 
-    // Fetch Orders
+    // Define fetchAssignedUsers BEFORE fetchOrders
+    const fetchAssignedUsers = useCallback(async (currentAdminId, userAuthToken) => {
+        try {
+            const response = await fetch(`http://${ipAddress}:8090/assigned-users/${currentAdminId}`, {
+                headers: {
+                    Authorization: `Bearer ${userAuthToken}`,
+                    "Content-Type": "application/json",
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch assigned users. Status: ${response.status}`);
+            }
+
+            const responseData = await response.json();
+            if (responseData.success) {
+                setAssignedUsers(responseData.assignedUsers);
+            } else {
+                setError(responseData.message || "Failed to fetch assigned users.");
+            }
+        } catch (err) {
+            console.error("Error fetching assigned users:", err);
+            setError("Error fetching assigned users. Please try again.");
+        }
+    }, []);
+
+    // Define fetchOrders AFTER fetchAssignedUsers
     const fetchOrders = useCallback(async (dateFilter) => {
         setLoading(true);
         try {
@@ -66,7 +92,7 @@ const InvoicePage = ({ navigation }) => {
                 });
             } else {
                 const todayFormatted = moment().format("YYYY-MM-DD");
-               归filteredOrders = fetchedOrders.filter(order => {
+                filteredOrders = fetchedOrders.filter(order => {
                     if (!order.placed_on) return false;
                     const parsedEpochSeconds = parseInt(order.placed_on, 10);
                     const orderDateMoment = moment.unix(parsedEpochSeconds);
@@ -77,7 +103,7 @@ const InvoicePage = ({ navigation }) => {
             setOrders(filteredOrders);
             setSelectAllChecked(false);
             setSelectedOrderIds([]);
-            await fetchAssignedUsers(adminId, token);
+            await fetchAssignedUsers(adminId, token); // Now safely callable
         } catch (fetchOrdersError) {
             console.error("FETCH ADMIN ORDERS - Fetch Error:", fetchOrdersError);
             Alert.alert("Error", fetchOrdersError.message || "Failed to fetch admin orders.");
@@ -85,32 +111,6 @@ const InvoicePage = ({ navigation }) => {
             setLoading(false);
         }
     }, [fetchAssignedUsers]);
-
-    // Fetch Assigned Users
-    const fetchAssignedUsers = useCallback(async (currentAdminId, userAuthToken) => {
-        try {
-            const response = await fetch(`http://${ipAddress}:8090/assigned-users/${currentAdminId}`, {
-                headers: {
-                    Authorization: `Bearer ${userAuthToken}`,
-                    "Content-Type": "application/json",
-                },
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch assigned users. Status: ${response.status}`);
-            }
-
-            const responseData = await response.json();
-            if (responseData.success) {
-                setAssignedUsers(responseData.assignedUsers);
-            } else {
-                setError(responseData.message || "Failed to fetch assigned users.");
-            }
-        } catch (err) {
-            console.error("Error fetching assigned users:", err);
-            setError("Error fetching assigned users. Please try again.");
-        }
-    }, []);
 
     // Fetch Order Products
     const fetchOrderProducts = useCallback(async (orderId) => {
@@ -329,47 +329,68 @@ const InvoicePage = ({ navigation }) => {
         return result.trim() || "Zero Rupees Only";
     };
 
-    // Generate Invoice and Save as PDF
+    // Post Invoice to API
+    const postInvoiceToAPI = useCallback(async (orderId, invoiceId, orderPlacedOn) => {
+        
+        try {
+            const token = await AsyncStorage.getItem("userAuthToken");
+            const invoiceDate = moment().unix(); // Current time in epoch seconds
+
+            const response = await axios.post(
+                `http://${ipAddress}:8090/invoice`,
+                {
+                    order_id: orderId,
+                    invoice_id: invoiceId,
+                    order_date: parseInt(orderPlacedOn),
+                    invoice_date: invoiceDate,
+                },
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            console.log("Invoice posted successfully:", response.data);
+            return response.data;
+        } catch (error) {
+            console.error("Error posting invoice to API:", error.response?.data || error.message);
+            throw new Error("Failed to save invoice data to server.");
+        }
+    }, []);
    
     // Generate Invoice and Save as PDF
     const generateInvoice = useCallback(
         async (order) => {
             const orderId = order.id;
-            const customerId = order.customer_id; // Assuming customer_id is available in order object
             const orderProducts = await fetchOrderProducts(orderId);
-            const allProducts = await fetchProducts(customerId); // Pass customerId to fetch customer-specific prices
-
+    
             const invoiceProducts = orderProducts
                 .map((op, index) => {
-                    const product = allProducts.find((p) => p.id === op.product_id);
-                    if (!product) {
-                        console.error(`Product not found for productId: ${op.product_id}`);
-                        return null;
-                    }
-
-                    const basePrice = parseFloat(product.price); // Customer-specific or default price
-                    const gstRate = parseFloat(product.gstRate || 0);
-                    const value = (op.quantity * basePrice).toFixed(2);
-                    const gstAmount = (parseFloat(value) * (gstRate / 100)).toFixed(2);
-
-                    const uomMatch = product.name.match(/\d+\s*(kg|g|liters|Ltr|ml|unit)/i);
-                    let uom = "N/A";
-                    if (uomMatch) {
-                        const matchedUom = uomMatch[1].toLowerCase();
-                        uom = matchedUom === "ml" || matchedUom === "liters" || matchedUom === "ltr" ? "Ltr" :
-                            matchedUom === "kg" || matchedUom === "g" ? "Kg" : matchedUom.toUpperCase();
-                    }
-
+                    // Calculate base price by removing GST from the stored price
+                    const priceIncludingGst = parseFloat(op.price);
+                    const gstRate = parseFloat(op.gst_rate || 0);
+                    
+                    // Calculate base price (price before GST)
+                    const basePrice = gstRate > 0 
+                        ? priceIncludingGst / (1 + (gstRate / 100))
+                        : priceIncludingGst;
+    
+                    // Calculate values
+                    const value = (op.quantity * basePrice);
+                    const gstAmount = value * (gstRate / 100);
+    
                     return {
                         serialNumber: index + 1,
-                        name: product.name,
-                        hsn_code: product.hsn_code || "N/A",
+                        name: op.name,
+                        hsn_code: op.hsn_code || " ",
                         quantity: op.quantity,
-                        uom: uom,
+                        uom: 'Pkts',
                         rate: basePrice.toFixed(2),
-                        value: value,
+                        value: value.toFixed(2),
                         gstRate: gstRate.toFixed(2),
-                        gstAmount: gstAmount,
+                        gstAmount: gstAmount.toFixed(2),
                     };
                 })
                 .filter(Boolean);
@@ -386,6 +407,7 @@ const InvoicePage = ({ navigation }) => {
                 route: "N/A",
             };
 
+           // In the invoice generation code
             const subTotal = invoiceProducts.reduce((acc, item) => acc + parseFloat(item.value), 0).toFixed(2);
             const totalGstAmount = invoiceProducts.reduce((acc, item) => acc + parseFloat(item.gstAmount), 0).toFixed(2);
             const cgstAmount = (parseFloat(totalGstAmount) / 2).toFixed(2);
@@ -508,6 +530,9 @@ const InvoicePage = ({ navigation }) => {
 
                 const filename = `Invoice_${invoiceNumber}.pdf`;
                 await save(uri, filename, "application/pdf", "Invoice");
+
+                // Post to API after PDF generation
+                await postInvoiceToAPI(orderId, invoiceNumber, order.placed_on);
 
                 console.log("PDF saved at:", uri);
             } catch (error) {

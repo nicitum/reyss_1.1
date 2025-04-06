@@ -11,7 +11,7 @@ const Stack = createStackNavigator();
 import { LogBox } from "react-native";
 LogBox.ignoreAllLogs(); // Completely hide all warnings
 
-
+//eas build --profile preview --platform android --clear-cache
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(null); // null here means we're still checking authentication.
 

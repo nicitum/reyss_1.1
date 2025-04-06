@@ -3,6 +3,49 @@ const router = express.Router();
 const session = require('express-session');
 const { executeQuery } = require("../dbUtils/db");
 const fs = require('fs');
+const moment = require("moment-timezone"); 
+const bcrypt = require('bcrypt');
+
+
+
+async function updateExistingPasswords() {
+    try {
+        const users = await executeQuery("SELECT id, customer_id FROM users");
+
+        for (const user of users) {
+            const userId = user.id;
+            const customerId = user.customer_id.toString(); // Ensure it's a string
+
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(customerId, salt);
+
+            await executeQuery("UPDATE users SET password = ?, updated_at = UNIX_TIMESTAMP() WHERE id = ?", [hashedPassword, userId]);
+
+            console.log(`Updated password for user ID: ${userId}`);
+        }
+
+        console.log('Successfully updated passwords for all users.');
+        return { status: true, message: 'Successfully updated passwords for all users.' };
+    } catch (error) {
+        console.error('Error updating passwords:', error);
+        return { status: false, message: 'Error updating passwords.', error: error.message };
+    }
+}
+
+// API endpoint to trigger password update
+router.post("/update-all-passwords-to-customer-id", async (req, res) => {
+    try {
+        const result = await updateExistingPasswords();
+        if (result.status) {
+            return res.status(200).json({ message: result.message });
+        } else {
+            return res.status(500).json({ message: result.message, error: result.error });
+        }
+    } catch (error) {
+        console.error("Error in password update endpoint:", error);
+        return res.status(500).json({ message: "Internal server error during password update." });
+    }
+});
 
 // API to update order approved_status
 router.post("/update-order-status", async (req, res) => {
@@ -186,7 +229,8 @@ router.get("/order-products", async (req, res) => { // <-- GET request, path: /o
                 quantity,
                 price,
                 name,
-                category
+                category,
+                gst_rate
             FROM
                 order_products
             WHERE
@@ -205,7 +249,8 @@ router.get("/order-products", async (req, res) => { // <-- GET request, path: /o
                 quantity: row.quantity,
                 price: row.price,
                 name: row.name,
-                category: row.category
+                category: row.category,
+                gst_rate: row.gst_rate
             }));
             return res.status(200).json(productList);
         } else {
@@ -263,7 +308,64 @@ router.get("/most-recent-order", async (req, res) => {
     }
 });
 
+// API to fetch the most recent orders for multiple customers and both AM/PM order types
+router.post("/most-recent-orders", async (req, res) => {
+    try {
+        const { customerIds } = req.body;
 
+        // Validate input
+        if (!customerIds || !Array.isArray(customerIds) || customerIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "customerIds must be a non-empty array",
+            });
+        }
+
+        // Sanitize customerIds to prevent SQL injection (assuming executeQuery handles this, but double-checking)
+        const validCustomerIds = customerIds.map(id => String(id)); // Ensure all are strings
+
+        // SQL Query to fetch the most recent AM and PM orders for all customers
+        const query = `
+            SELECT o1.*
+            FROM orders o1
+            WHERE o1.customer_id IN (?)
+            AND o1.order_type IN ('AM', 'PM')
+            AND o1.placed_on = (
+                SELECT MAX(o2.placed_on)
+                FROM orders o2
+                WHERE o2.customer_id = o1.customer_id
+                AND o2.order_type = o1.order_type
+            )
+        `;
+
+        // Execute query with all customer IDs
+        const orders = await executeQuery(query, [validCustomerIds]);
+
+        // Process results into a structured response
+        const result = {};
+        validCustomerIds.forEach(customerId => {
+            result[customerId] = { am: null, pm: null };
+        });
+
+        orders.forEach(order => {
+            const { customer_id, order_type } = order;
+            if (order_type === 'AM') {
+                result[customer_id].am = order;
+            } else if (order_type === 'PM') {
+                result[customer_id].pm = order;
+            }
+        });
+
+        res.json({ success: true, orders: result });
+    } catch (error) {
+        console.error("Error fetching most recent orders:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+            error: error.message,
+        });
+    }
+});
 
 
 
@@ -291,9 +393,6 @@ router.delete("/delete_order_product/:orderProductId", async (req, res) => {
         res.status(500).json({ success: false, message: "Internal Server Error", error: error });
     }
 });
-
-
-// --- 2. POST /order_update (Modified with cancellation and altered status logic) ---
 router.post("/order_update", async (req, res) => {
     try {
         const { orderId, products, totalAmount } = req.body;
@@ -323,27 +422,29 @@ router.post("/order_update", async (req, res) => {
         // Update order products if there are any
         if (products.length > 0) {
             for (const product of products) {
-                const { order_id, quantity, price, is_new } = product;
+                const { order_id, quantity, price, gst_rate, is_new } = product;
                 if (!order_id) {
                     return res.status(400).json({ success: false, message: "order_product_id is required for product updates" });
                 }
 
-                // Get current quantity for existing products
+                // Get current quantity and gst_rate for existing products
                 let currentQuantity = 0;
+                let currentGstRate = null;
                 if (!is_new) {
-                    const currentProductQuery = `SELECT quantity FROM order_products WHERE order_id = ? AND product_id = ?`;
+                    const currentProductQuery = `SELECT quantity, gst_rate FROM order_products WHERE order_id = ? AND product_id = ?`;
                     const currentProduct = await executeQuery(currentProductQuery, [order_id, product.product_id]);
                     if (currentProduct.length > 0) {
                         currentQuantity = currentProduct[0].quantity;
+                        currentGstRate = currentProduct[0].gst_rate;
                     }
                 }
 
                 if (is_new) {
                     const insertProductQuery = `
-                        INSERT INTO order_products (order_id, product_id, quantity, price, name, category, altered)
-                        VALUES (?, ?, ?, ?, ?, ?, 'No')
+                        INSERT INTO order_products (order_id, product_id, quantity, price, name, category, gst_rate, altered)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'No')
                     `;
-                    await executeQuery(insertProductQuery, [orderId, product.product_id, quantity, price, product.name, product.category]);
+                    await executeQuery(insertProductQuery, [orderId, product.product_id, quantity, price, product.name, product.category, gst_rate]);
                 } else {
                     // Calculate the actual quantity difference
                     const quantityDifference = quantity - currentQuantity;
@@ -353,15 +454,17 @@ router.post("/order_update", async (req, res) => {
                         UPDATE order_products
                         SET quantity = ?, 
                             price = ?,
+                            gst_rate = ?,
                             altered = ?,
                             quantity_change = ?
                         WHERE order_id = ? AND product_id = ?
                     `;
                     
-                    let alteredStatus = currentQuantity !== quantity ? 'Yes' : 'No';
+                    let alteredStatus = currentQuantity !== quantity || currentGstRate !== gst_rate ? 'Yes' : 'No';
                     await executeQuery(updateProductQuery, [
                         quantity, 
                         price, 
+                        gst_rate,
                         alteredStatus,
                         quantityChange,
                         orderId, 
@@ -395,7 +498,33 @@ router.post("/order_update", async (req, res) => {
 });
 
 
+router.get("/latest-product-price", async (req, res) => {
+    try {
+        const { productId } = req.query;
 
+        if (!productId || isNaN(productId)) {
+            return res.status(400).json({ success: false, message: "Valid productId is required." });
+        }
+
+        const query = `
+            SELECT price 
+            FROM order_products 
+            WHERE product_id = ? 
+            ORDER BY id DESC 
+            LIMIT 1
+        `;
+        const result = await executeQuery(query, [productId]);
+
+        if (result.length === 0) {
+            return res.status(404).json({ success: false, message: "No price found for this product in order_products." });
+        }
+
+        res.json({ success: true, price: result[0].price });
+    } catch (error) {
+        console.error("Error fetching latest product price:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
+    }
+});
 
 // --- 3. CANCEL Order (Endpoint to cancel the order - Modified from DELETE) ---
 router.post("/cancel_order/:orderId", async (req, res) => { // Changed to POST
@@ -442,11 +571,9 @@ router.post("/cancel_order/:orderId", async (req, res) => { // Changed to POST
     }
 });
 
-
-// --- 2. ADD Product to Order (New Endpoint) ---
 router.post("/add-product-to-order", async (req, res) => {
     try {
-        const { orderId, productId, quantity, price, name, category } = req.body;
+        const { orderId, productId, quantity, price, name, category, gst_rate } = req.body;
 
         // --- Input Validation ---
         if (!orderId || !productId || quantity === undefined || price === undefined) {
@@ -455,10 +582,13 @@ router.post("/add-product-to-order", async (req, res) => {
         if (isNaN(orderId) || isNaN(productId) || isNaN(quantity) || isNaN(price) || quantity <= 0 || price < 0) {
             return res.status(400).json({ success: false, message: "Invalid data types: orderId and productId must be numbers, quantity must be a positive number, and price must be a non-negative number." });
         }
+        if (gst_rate === undefined || isNaN(gst_rate) || gst_rate < 0) {
+            return res.status(400).json({ success: false, message: "Invalid GST rate: gst_rate must be a non-negative number." });
+        }
 
         // --- Check if Order and Product Exist ---
         const orderExistsQuery = `SELECT id FROM orders WHERE id = ?`;
-        const productExistsQuery = `SELECT id FROM products WHERE id = ?`;
+        const productExistsQuery = `SELECT id, gst_rate FROM products WHERE id = ?`;
 
         const orderExistsResult = await executeQuery(orderExistsQuery, [orderId]);
         if (orderExistsResult.length === 0) {
@@ -470,23 +600,27 @@ router.post("/add-product-to-order", async (req, res) => {
             return res.status(400).json({ success: false, message: `Product with ID ${productId} not found.` });
         }
 
+        // Use the GST rate from the products table if not provided in the request
+        const productGstRate = productExistsResult[0].gst_rate;
+        const finalGstRate = gst_rate !== undefined ? gst_rate : productGstRate;
+
         // --- Check if the product is already in the order ---
         const productAlreadyInOrderQuery = `SELECT quantity FROM order_products WHERE order_id = ? AND product_id = ?`;
         const productInOrderResult = await executeQuery(productAlreadyInOrderQuery, [orderId, productId]);
 
         if (productInOrderResult.length > 0) {
-            // Update quantity if different
+            // Update quantity, price, and gst_rate if different
             if (parseInt(productInOrderResult[0].quantity) !== parseInt(quantity)) {
                 const updateQuery = `
                     UPDATE order_products 
-                    SET quantity = ?, price = ?
+                    SET quantity = ?, price = ?, gst_rate = ?
                     WHERE order_id = ? AND product_id = ?
                 `;
-                await executeQuery(updateQuery, [quantity, price, orderId, productId]);
+                await executeQuery(updateQuery, [quantity, price, finalGstRate, orderId, productId]);
 
                 return res.json({
                     success: true,
-                    message: "Product quantity updated"
+                    message: "Product quantity and GST rate updated"
                 });
             } else {
                 return res.status(409).json({
@@ -498,13 +632,13 @@ router.post("/add-product-to-order", async (req, res) => {
 
         // --- Insert new order_product record ---
         const insertQuery = `
-            INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO order_products (order_id, product_id, quantity, price, name, category, gst_rate)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `;
-        const insertResult = await executeQuery(insertQuery, [orderId, productId, quantity, price, name, category]);
+        const insertResult = await executeQuery(insertQuery, [orderId, productId, quantity, price, name, category, finalGstRate]);
 
         if (insertResult.affectedRows > 0) {
-            console.log(`Product ID ${productId} added to order ID ${orderId}`);
+            console.log(`Product ID ${productId} added to order ID ${orderId} with GST rate ${finalGstRate}`);
             res.status(201).json({
                 success: true,
                 message: "Product added to order successfully",
@@ -520,7 +654,6 @@ router.post("/add-product-to-order", async (req, res) => {
         res.status(500).json({ success: false, message: "Internal Server Error", error: error });
     }
 });
-
 router.post("/on-behalf", async (req, res) => {
     try {
         const { customer_id, order_type, reference_order_id } = req.body;
@@ -529,6 +662,43 @@ router.post("/on-behalf", async (req, res) => {
             return res.status(400).json({
                 message: "customer_id, order_type, and reference_order_id are required"
             });
+        }
+
+        // 0. Check if auto order is enabled for the user and order type
+        const checkAutoOrderQuery = `
+            SELECT auto_am_order, auto_pm_order
+            FROM users
+            WHERE customer_id = ?
+        `;
+        const userCheckResult = await executeQuery(checkAutoOrderQuery, [customer_id]);
+
+        if (!userCheckResult || userCheckResult.length === 0) {
+            return res.status(404).json({ message: "Customer not found." });
+        }
+
+        const user = userCheckResult[0];
+        let shouldProceed = false;
+
+        if (order_type.toLowerCase() === 'am') {
+            if (user.auto_am_order && user.auto_am_order.toLowerCase() === 'yes') {
+                shouldProceed = true;
+            } else {
+                return res.status(400).json({ message: "Automatic AM order placement is disabled for this customer." });
+            }
+        } else if (order_type.toLowerCase() === 'pm') {
+            if (user.auto_pm_order && user.auto_pm_order.toLowerCase() === 'yes') {
+                shouldProceed = true;
+            } else {
+                return res.status(400).json({ message: "Automatic PM order placement is disabled for this customer." });
+            }
+        } else {
+            return res.status(400).json({ message: "Invalid order_type. Must be 'am' or 'pm'." });
+        }
+
+        if (!shouldProceed) {
+            // This condition should ideally be caught in the 'else' blocks above,
+            // but it's added here as a safeguard.
+            return;
         }
 
         // 1. Place Admin Order and get new_order_id
@@ -551,6 +721,10 @@ router.post("/on-behalf", async (req, res) => {
         FROM order_products
         WHERE order_id = ?
         AND LOWER(category) NOT LIKE '%Others%'
+        AND LOWER(category) NOT LIKE '%paneer%'
+        AND LOWER(category) NOT LIKE '%ghee%'
+        AND LOWER(category) NOT LIKE '%butter%'
+        AND LOWER(category) NOT LIKE '%butter milk%'
         `;
         const orderProductsValues = [newOrderId, reference_order_id];
         await executeQuery(insertOrderProductsQuery, orderProductsValues);
@@ -1521,7 +1695,6 @@ router.get("/item-report", async (req, res) => {
 
 
 //invoice push
-
 router.post("/invoice", async (req, res) => {
     try {
         // 1. Extract inputs from the request body
@@ -1532,42 +1705,356 @@ router.post("/invoice", async (req, res) => {
             return res.status(400).json({ message: "Missing required fields: order_id, invoice_id, order_date, and invoice_date are all mandatory." });
         }
 
-        // 3. Prepare the SQL INSERT query
-        // Assuming order_date and invoice_date are expected as Unix timestamps (integers) as per our previous discussion
-        const query = `
-            INSERT INTO invoice (order_id, invoice_id, order_date, invoice_date)
-            VALUES (?, ?, ?, ?)
-        `;
+        // 3. Check if an invoice record already exists for this order_id
+        const checkQuery = "SELECT * FROM invoice WHERE order_id = ?";
+        const existingInvoice = await executeQuery(checkQuery, [order_id]);
 
-        // 4. Execute the query with parameters
-        const values = [order_id, invoice_id, order_date, invoice_date];
-        const results = await executeQuery(query, values);
-
-        // 5. Handle success and errors
-
-        // Check if the insertion was successful.  For INSERT, 'results' from executeQuery might vary.
-        // It often returns an object with 'affectedRows' or similar in many Node.js MySQL libraries.
-        // Let's assume 'results' has 'affectedRows' if successful. Adapt based on your executeQuery's return.
-        if (results && results.affectedRows > 0) {
-            return res.status(201).json({ // 201 Created - successful resource creation
-                message: "Invoice data inserted successfully",
-                insertedInvoiceId: invoice_id // You can return the invoice_id if needed
-            });
+        // 4. Prepare SQL query for INSERT or UPDATE based on existence
+        let query;
+        let message;
+        if (existingInvoice && existingInvoice.length > 0) {
+            // Invoice exists for this order_id, so UPDATE the existing record
+            query = `
+                UPDATE invoice
+                SET invoice_id = ?,
+                    order_date = ?,
+                    invoice_date = ?
+                WHERE order_id = ?
+            `;
+            message = "Invoice data updated successfully for order_id: " + order_id;
         } else {
-            // If no rows were affected, but no error was caught, it's an unexpected situation.
-            // Maybe the query executed but didn't insert (e.g., due to data constraints - though we haven't defined any)
-            console.warn("Invoice insertion query executed, but no rows were affected. Check data or database constraints.");
-            return res.status(400).json({ message: "Invoice data insertion failed. No rows were inserted.", detail: "Please check the provided data and database configuration." });
+            // Invoice does not exist for this order_id, so INSERT a new record
+            query = `
+                INSERT INTO invoice (order_id, invoice_id, order_date, invoice_date)
+                VALUES (?, ?, ?, ?)
+            `;
+            message = "Invoice data inserted successfully for order_id: " + order_id;
         }
 
+        // 5. Execute the query with parameters (order of values depends on INSERT or UPDATE)
+        const values = existingInvoice && existingInvoice.length > 0
+            ? [invoice_id, order_date, invoice_date, order_id] // For UPDATE: invoice_id, order_date, invoice_date, WHERE order_id
+            : [order_id, invoice_id, order_date, invoice_date];    // For INSERT: order_id, invoice_id, order_date, invoice_date
+
+        const results = await executeQuery(query, values);
+
+        // 6. Handle success and errors
+        if (results && results.affectedRows > 0) {
+            return res.status(200).json({ // 200 OK - for both UPDATE and INSERT in this context
+                message: message,
+                orderId: order_id // Return order_id for clarity
+            });
+        } else {
+            // If no rows were affected in UPDATE, it might mean data was the same, which could be considered successful in this scenario of "latest data".
+            // If no rows affected in INSERT, it's an issue.  But with the existence check, INSERT should generally succeed if validation passed.
+            console.warn("Invoice operation query executed, but no rows might have been affected (or data was unchanged in update). Check data or logic.");
+            return res.status(200).json({ message: message + " (No changes may have been applied if data was the same).", orderId: order_id });
+        }
 
     } catch (error) {
-        console.error("Error inserting invoice data:", error);
-        return res.status(500).json({ message: "Internal server error while inserting invoice data", error: error.message });
+        console.error("Error processing invoice data:", error);
+        return res.status(500).json({ message: "Internal server error while processing invoice data", error: error.message });
     }
 });
 
 
+
+router.get("/allowed-shift", async (req, res) => {
+    try {
+        const { shift } = req.query;
+
+        if (!shift || !['AM', 'PM'].includes(shift)) {
+            return res.status(400).json({ message: "Invalid shift parameter. Must be 'AM' or 'PM'.", allowed: false });
+        }
+
+        const now = moment.tz('Asia/Kolkata'); // Using 'Asia/Kolkata' for India // Remember to replace 'Your-Timezone'
+        const currentHour = now.hour();
+        let isShiftAllowed = false;
+
+        if (shift === 'AM') {
+            isShiftAllowed = (currentHour >= 6 && currentHour < 24);
+        } else if (shift === 'PM') {
+            isShiftAllowed = (currentHour >= 6 && currentHour < 24);
+        }
+
+        return res.status(200).json({
+            message: `Shift ${shift} allowance check successful.`, // More informative message
+            allowed: isShiftAllowed
+        });
+
+    } catch (error) {
+        console.error("Error checking shift allowance:", error);
+        return res.status(500).json({ message: "Internal server error while checking shift allowance", error: error.message, allowed: false }); // Include allowed: false in error response
+    }
+});
+
+
+
+
+
+
+// API to get all orders
+router.get("/get-all-orders", async (req, res) => {
+    try {
+        // Query to select all orders
+        const query = "SELECT * FROM orders";
+        
+        // Execute the query
+        const result = await executeQuery(query);
+
+        if (result.length > 0) {
+            return res.status(200).json({ 
+                message: "Orders fetched successfully",
+                data: result 
+            });
+        } else {
+            return res.status(404).json({ message: "No orders found" });
+        }
+    } catch (error) {
+        console.error("Error fetching orders:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+
+// price update api - Corrected to update a specific product
+// --- 2. UPDATE Order Product Price and Total Amount (Modified Endpoint) ---
+router.put("/update_order_price/:orderId/product/:productId", async (req, res) => {
+    try {
+        const { orderId, productId } = req.params; // Extract orderId and productId from URL params
+        const { newPrice } = req.body; // Extract newPrice from request body
+
+        if (!orderId) {
+            return res.status(400).json({ success: false, message: "Order ID is required" });
+        }
+
+        if (!productId) {
+            return res.status(400).json({ success: false, message: "Product ID is required" });
+        }
+
+        if (newPrice === undefined || newPrice === null || isNaN(parseFloat(newPrice))) {
+            return res.status(400).json({ success: false, message: "New price is required and must be a valid number" });
+        }
+
+        // --- Step 1: Update the price for a specific product in the order_products table ---
+        const updateOrderPriceQuery = `
+            UPDATE order_products
+            SET price = ?
+            WHERE order_id = ? AND product_id = ?
+        `;
+        const updateResult = await executeQuery(updateOrderPriceQuery, [newPrice, orderId, productId]);
+
+        if (updateResult.affectedRows > 0) {
+            console.log(`Updated price for order ID: ${orderId}, product ID: ${productId} to: ${newPrice}`);
+
+            // --- Step 2: Fetch all products for the updated order to recalculate total amount ---
+            const fetchOrderProductsQuery = `
+                SELECT price, quantity
+                FROM order_products
+                WHERE order_id = ?
+            `;
+            const orderProductsResult = await executeQuery(fetchOrderProductsQuery, [orderId]);
+            const orderProducts = orderProductsResult;
+
+            // --- Step 3: Calculate the new total amount for the order ---
+            let newTotalAmount = 0;
+            if (orderProducts && orderProducts.length > 0) {
+                newTotalAmount = orderProducts.reduce((sum, product) => sum + (product.price * product.quantity), 0);
+            }
+
+            // --- Step 4: Update the total_amount in the orders table ---
+            const updateOrdersTableQuery = `
+                UPDATE orders
+                SET total_amount = ?
+                WHERE id = ?
+            `;
+            const updateOrdersResult = await executeQuery(updateOrdersTableQuery, [newTotalAmount, orderId]);
+
+            if (updateOrdersResult.affectedRows > 0) {
+                console.log(`Updated total_amount for order ID: ${orderId} to: ${newTotalAmount}`);
+                res.json({ success: true, message: `Price for order ID ${orderId}, product ID ${productId} updated successfully to ${newPrice}. Total amount updated to ${newTotalAmount}` });
+            } else {
+                // Handle the case where the order might not exist in the orders table (though it should)
+                res.status(404).json({ success: false, message: `Order with ID ${orderId} found, product price updated, but failed to update total amount in orders table.` });
+            }
+
+        } else {
+            res.status(404).json({ success: false, message: `Order with ID ${orderId} or product with ID ${productId} not found or no such product associated with the order to update` });
+        }
+
+    } catch (error) {
+        console.error("Error updating order price and total amount:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error", error: error });
+    }
+});
+
+
+
+router.post("/customer_price_update", async (req, res) => {
+    try {
+        const { customer_id, product_id, customer_price } = req.body;
+
+        // Validate input
+        if (!customer_id || !product_id || customer_price === undefined || customer_price === null || isNaN(parseFloat(customer_price))) {
+            return res.status(400).json({ message: "customer_id, product_id, and customer_price are required and customer_price must be a valid number" });
+        }
+
+        // Check if a record exists for the given customer and product
+        const checkQuery = "SELECT * FROM customer_product_prices WHERE customer_id = ? AND product_id = ?";
+        const checkValues = [customer_id, product_id];
+        const existingRecord = await executeQuery(checkQuery, checkValues);
+
+        let result;
+        if (existingRecord.length > 0) {
+            // Update the existing record
+            const updateQuery = "UPDATE customer_product_prices SET customer_price = ? WHERE customer_id = ? AND product_id = ?";
+            const updateValues = [customer_price, customer_id, product_id];
+            result = await executeQuery(updateQuery, updateValues);
+
+            if (result.affectedRows > 0) {
+                return res.status(200).json({ message: "Customer price updated successfully" });
+            } else {
+                return res.status(200).json({ message: "Customer price updated successfully (no changes made)" });
+            }
+        } else {
+            // Insert a new record
+            const insertQuery = "INSERT INTO customer_product_prices (customer_id, product_id, customer_price) VALUES (?, ?, ?)";
+            const insertValues = [customer_id, product_id, customer_price];
+            result = await executeQuery(insertQuery, insertValues);
+
+            if (result.affectedRows > 0) {
+                return res.status(201).json({ message: "Customer price added successfully" });
+            } else {
+                return res.status(500).json({ message: "Failed to add customer price" });
+            }
+        }
+    } catch (error) {
+        console.error("Error updating/adding customer price:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+
+
+router.get("/customer_price_check", async (req, res) => {
+    try {
+        const { customer_id } = req.query; // Assuming customer_id is passed as a query parameter
+
+        // Validate input
+        if (!customer_id) {
+            return res.status(400).json({ message: "customer_id is required" });
+        }
+
+        // Query to fetch all product IDs and prices for the given customer
+        const query = "SELECT product_id, customer_price FROM customer_product_prices WHERE customer_id = ?";
+        const values = [customer_id];
+
+        const results = await executeQuery(query, values);
+
+        if (results.length > 0) {
+            return res.status(200).json(results); // Return the array of product_id and customer_price
+        } else {
+            return res.status(404).json({ message: "No prices found for the given customer" });
+        }
+    } catch (error) {
+        console.error("Error fetching customer prices:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+
+
+
+
+// API endpoint to update user's auto_am_order and auto_pm_order
+router.post("/update-auto-order-preferences", async (req, res) => {
+    try {
+        const { auto_am_order, auto_pm_order, customer_id } = req.body; // Changed to accept customer_id
+
+        // Validate input
+        if (!customer_id) {
+            return res.status(400).json({ message: "customer_id is required.", success: false });
+        }
+        if (auto_am_order !== 'Yes' && auto_am_order !== 'No' && auto_am_order !== null && auto_am_order !== undefined) {
+            return res.status(400).json({ message: "Invalid value for auto_am_order. Must be 'Yes' or 'No'." });
+        }
+        if (auto_pm_order !== 'Yes' && auto_pm_order !== 'No' && auto_pm_order !== null && auto_pm_order !== undefined) {
+            return res.status(400).json({ message: "Invalid value for auto_pm_order. Must be 'Yes' or 'No'." });
+        }
+
+        // Update query
+        const query = "UPDATE users SET auto_am_order = ?, auto_pm_order = ? WHERE customer_id = ?"; // Assuming your users table has an 'id' column that corresponds to the customer_id
+
+        // Values to be inserted into the query
+        const values = [auto_am_order, auto_pm_order, customer_id];
+
+        // Execute the query
+        const result = await executeQuery(query, values);
+
+        if (result.affectedRows > 0) {
+            return res.status(200).json({ message: "Auto order preferences updated successfully", success: true });
+        } else {
+            return res.status(404).json({ message: "Customer not found or preferences not updated", success: false });
+        }
+    } catch (error) {
+        console.error("Error updating auto order preferences:", error);
+        return res.status(500).json({ message: "Internal server error", success: false, error: error.message });
+    }
+});
+
+
+router.post("/global-price-update", async (req, res) => {
+    try {
+        const { product_id, new_discount_price } = req.body;
+
+        // Validate input
+        if (!product_id || !new_discount_price) {
+            return res.status(400).json({ message: "product_id and new_discount_price are required" });
+        }
+
+        // Step 1: Fetch the fixed price (MRP) from the products table
+        const selectQuery = "SELECT price FROM products WHERE id = ?";
+        const productResult = await executeQuery(selectQuery, [product_id]);
+
+        if (productResult.length === 0) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+
+        const fixedPrice = parseFloat(productResult[0].price); // Use price (MRP) as the base
+        const newPrice = parseFloat(new_discount_price);
+        const priceDifference = newPrice - fixedPrice; // Calculate difference from fixed price
+
+        console.log("Fixed Price (MRP):", fixedPrice);
+        console.log("New Discount Price:", newPrice);
+        console.log("Price Difference:", priceDifference);
+
+        // Step 2: Update customer_product_prices table
+        const updateCustomerPricesQuery = `
+            UPDATE customer_product_prices 
+            SET customer_price = customer_price + ? 
+            WHERE product_id = ?
+        `;
+        const customerUpdateResult = await executeQuery(updateCustomerPricesQuery, [priceDifference, product_id]);
+
+        console.log("Customer rows affected:", customerUpdateResult.affectedRows);
+
+        // Step 3: Update the products table with the new discountPrice
+        const updateProductQuery = "UPDATE products SET discountPrice = ? WHERE id = ?";
+        const productUpdateResult = await executeQuery(updateProductQuery, [newPrice, product_id]);
+
+        if (productUpdateResult.affectedRows === 0) {
+            return res.status(404).json({ message: "Failed to update product price" });
+        }
+
+        return res.status(200).json({
+            message: "Global price update completed successfully",
+            affectedCustomerRows: customerUpdateResult.affectedRows,
+        });
+    } catch (error) {
+        console.error("Error in global price update:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
 module.exports = router;
 
 

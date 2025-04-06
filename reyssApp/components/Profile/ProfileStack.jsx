@@ -15,9 +15,12 @@ import DailyOrdersReport from './DailyOrdersReport';
 import Remarks from './Remarks';
 import AmountDueReport from './AmountDueReport';
 import CashCollectedReport from './CashCollectedReport';
+import AutoOrderPage from './AutoOrderPage';
 
 import Invoice from '../route_mgr/Invoice';
 import ItemsReport from './ItemsReport';
+
+import AutoOrderUpdate from './AutoOrderUpdate';
 
 const Stack = createStackNavigator();
 
@@ -61,7 +64,7 @@ const ProfileStack = () => {
       <Stack.Screen 
         name="PlaceOrderAdmin" 
         component={PlaceOrderAdmin} 
-        options={{ title: 'On Behalf' }} 
+        options={{ title: 'Auto Order' }} 
       />
       
 
@@ -134,6 +137,18 @@ const ProfileStack = () => {
         name="ItemsReport" 
         component={ItemsReport} 
         options={{ title: 'Items Report' }} 
+      />
+
+    <Stack.Screen 
+        name="AutoOrderPage" 
+        component={AutoOrderPage} 
+        options={{ title: 'Auto Order' }} 
+      />
+
+    <Stack.Screen 
+        name="AutoOrderUpdate"
+        component={AutoOrderUpdate} 
+        options={{ title: 'Auto Order Update' }} 
       />
 
 

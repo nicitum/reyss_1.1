@@ -21,8 +21,11 @@ const LoginPage = ({ navigation }) => {
 
   const handleLogin = async () => {
     setIsLoading(true);
+    const loginUrl = `http://${ipAddress}:8090/auth`;
+    console.log("Starting login request to:", loginUrl); // Log the full URL
+
     try {
-      const response = await fetch(`http://${ipAddress}:8090/auth`, {
+      const response = await fetch(loginUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -33,8 +36,13 @@ const LoginPage = ({ navigation }) => {
         }),
       });
 
+      console.log("Response received:", response.ok, response.status); // Log success/failure and status code
+
       const data = await response.json();
+      console.log("Response data:", data); // Log the full response body
+
       if (!response.ok || !data.status) {
+        console.log("Login failed with message:", data.message);
         Alert.alert("Login Failed", data.message);
         setIsLoading(false);
         return;
@@ -42,31 +50,29 @@ const LoginPage = ({ navigation }) => {
 
       const decodedToken = jwtDecode(data.token);
       const customerId = decodedToken.id;
+      console.log("Token decoded, customerId:", customerId);
       await AsyncStorage.setItem("customerId", customerId);
       await AsyncStorage.setItem("userAuthToken", data.token);
+      console.log("Login successful, navigating to TabNavigator");
       setIsLoading(false);
       navigation.navigate("TabNavigator");
     } catch (err) {
-      console.error("Login error:", err);
+      console.error("Login error details:", err.message, err.stack); // Detailed error logging
       setIsLoading(false);
       Alert.alert("Login Error", "An error occurred. Please try again.");
     }
   };
 
   return (
+    // Your existing JSX remains unchanged
     <View style={styles.container}>
-      {/* Top Section (70% white) */}
       <View style={styles.topSection}>
         <Image source={require("../assets/SL.png")} style={styles.logo} />
         <Text style={styles.title}>REYSS</Text>
         <Text style={styles.subtitle}>WELCOME TO SL ENTERPRISESS</Text>
       </View>
-
-      {/* Bottom Yellow Background (30% yellow) */}
       <View style={styles.bottomSection}>
-        {/* Form that floats over both sections */}
         <View style={styles.formContainer}>
-          {/* Username Input */}
           <View style={styles.inputContainer}>
             <Icon name="person" size={24} color="#aaa" style={styles.icon} />
             <TextInput
@@ -77,8 +83,6 @@ const LoginPage = ({ navigation }) => {
               placeholderTextColor="#aaa"
             />
           </View>
-
-          {/* Password Input */}
           <View style={styles.inputContainer}>
             <Icon name="lock" size={24} color="#aaa" style={styles.icon} />
             <TextInput
@@ -86,7 +90,7 @@ const LoginPage = ({ navigation }) => {
               placeholder="Password"
               value={password}
               onChangeText={setPassword}
-              secureTextEntry={!isPasswordVisible} // Toggle secureTextEntry based on state
+              secureTextEntry={!isPasswordVisible}
               placeholderTextColor="#aaa"
             />
             <TouchableOpacity
@@ -100,8 +104,6 @@ const LoginPage = ({ navigation }) => {
               />
             </TouchableOpacity>
           </View>
-
-          {/* Login Button */}
           <TouchableOpacity style={styles.button} onPress={handleLogin}>
             <Text style={styles.buttonText}>Login</Text>
           </TouchableOpacity>
@@ -111,13 +113,14 @@ const LoginPage = ({ navigation }) => {
   );
 };
 
+// Styles remain unchanged
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
   },
   topSection: {
-    flex: 7, // This makes the top section take 70% of the screen
+    flex: 7,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#fff",
@@ -125,7 +128,7 @@ const styles = StyleSheet.create({
   bottomSection: {
     flex: 3,
     backgroundColor: "#ffcc00",
-    justifyContent: "flex-end", // Ensures formContainer is above the yellow section
+    justifyContent: "flex-end",
     alignItems: "center",
   },
   logo: {
@@ -146,8 +149,8 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     position: "absolute",
-    width: "90%", // Form width
-    top: -100, // This lifts the form up to overlap both sections
+    width: "90%",
+    top: -100,
     backgroundColor: "#fff",
     borderRadius: 20,
     padding: 20,

@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import Toast from 'react-native-toast-message';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { ipAddress } from '../../urls';
 
 export default function Payments() {
     const [paymentResponse, setPaymentResponse] = useState(null);
@@ -51,7 +52,7 @@ export default function Payments() {
         setPaymentAmount(amount);
         setIsInitiatingPayment(true);
         try {
-            const tokenResponse = await fetch('http://192.168.1.13:8090/generate-payment-token', {
+            const tokenResponse = await fetch(`http://${ipAddress}:8090/generate-payment-token`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -83,7 +84,7 @@ export default function Payments() {
                 "consumerData": {
                     "deviceId": "WEBSH2",
                     "token": paymentToken,
-                    "returnUrl": "http://192.168.1.13:8090/payment-response",
+                    "returnUrl": "http://82.112.226.135:8090/payment-response",
                     "responseHandler": "handleResponse",
                     "paymentMode": "all",
                     "merchantLogoUrl": "https://www.paynimo.com/CompanyDocs/company-logo-vertical.png",
@@ -109,7 +110,7 @@ export default function Payments() {
             const params = new URLSearchParams();
             params.append('reqJson', reqJsonString);
             console.log("Payments.jsx - consumerData BEFORE URL:", reqJson.consumerData);
-            const paymentUrl = `http://192.168.1.13:3000/payments?${params.toString()}`;
+            const paymentUrl = `http://${ipAddress}:8090/payments.html?${params.toString()}`;
             console.log("Opening Payment URL in Browser:", paymentUrl);
             await Linking.openURL(paymentUrl).catch(err => {
                 console.error('Error opening URL:', err);
@@ -127,7 +128,7 @@ export default function Payments() {
     const getLatestPaymentResponse = useCallback(async () => {
         try {
             console.log("Fetching latest payment response data...");
-            const response = await fetch('http://192.168.1.13:8090/get-payment-response-data');
+            const response = await fetch(`http://${ipAddress}:8090/get-payment-response-data`);
             if (!response.ok) {
                 if (response.status === 404) {
                     setPaymentResponse({ message: 'No payment response data found yet.' });
@@ -180,7 +181,7 @@ export default function Payments() {
         }
 
         try {
-            const backendResponse = await fetch(`http://192.168.1.13:8090/collect_online?customerId=${customerId}`, {
+            const backendResponse = await fetch(`http://${ipAddress}:8090/collect_online?customerId=${customerId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -122,18 +122,12 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                                 >
                                     <Text style={styles.subMenuText}>Admin Orders</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={styles.subMenuItem}
-                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("DeliveryStatusUpdate"); }}
-                                >
-                                    <Text style={styles.subMenuText}>Manage Deliveries</Text>
-                                </TouchableOpacity>
 
                                 <TouchableOpacity
                                     style={styles.subMenuItem}
                                     onPress={() => { navigateToAdminOrders(); navigation.navigate("PlaceOrderAdmin"); }}
                                 >
-                                    <Text style={styles.subMenuText}>On Behalf</Text>
+                                    <Text style={styles.subMenuText}>Auto Order</Text>
                                 </TouchableOpacity>
 
 
@@ -177,12 +171,6 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                                     <Text style={styles.subMenuText}>Delivery Status Update</Text>
                                 </TouchableOpacity>
 
-                                <TouchableOpacity
-                                    style={styles.subMenuItem}
-                                    onPress={() => { toggleOrdersSubMenu(); navigation.navigate("Payments"); }}
-                                >
-                                    <Text style={styles.subMenuText}>Payments</Text>
-                                </TouchableOpacity>
                             </>
                         )}
                     </View>
@@ -267,6 +255,20 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     </TouchableOpacity>
                     
                     )}
+
+
+                    {userRole === "superadmin" && (
+                    <TouchableOpacity
+                        style={styles.subMenuItem}
+                        onPress={() => {
+                        navigation.navigate("AutoOrderPage");
+                        }}
+                    >
+                        <Text style={styles.subMenuText}>Auto Order</Text>
+                        
+                    </TouchableOpacity>
+                    
+                    )}
                     
 
                     {userRole === "superadmin" && (
@@ -281,18 +283,26 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     </TouchableOpacity>
                     
                     )}
+
+
+                    {userRole === "superadmin" && (
+                    <TouchableOpacity
+                        style={styles.subMenuItem}
+                        onPress={() => {
+                        navigation.navigate("AutoOrderUpdate");
+                        }}
+                    >
+                        <Text style={styles.subMenuText}>Auto Order Update</Text>
+                        
+                    </TouchableOpacity>
+                    
+                    )}
                 </View>
                 )}
 
              
 
-                <TouchableOpacity style={styles.menuItem} onPress={() => openModal(PaymentsHistoryContent)}>
-                    <View style={styles.menuIconText}>
-                        <MaterialIcons name="history" size={24} color="#ffcc00" />
-                        <Text style={styles.menuText}>Payment History</Text>
-                    </View>
-                    <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
-                </TouchableOpacity>
+                
 
                 <TouchableOpacity style={styles.menuItem}>
                     <View style={styles.menuIconText}>

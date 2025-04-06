@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react"; // Added useRef
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
     View,
     Text,
@@ -6,27 +6,25 @@ import {
     StyleSheet,
     ScrollView,
     TouchableOpacity,
-    TextInput // Import TextInput
+    TextInput
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
-import axios from "axios"; // Import axios
-import { ipAddress } from "../../urls"; // Import ipAddress
+import axios from "axios";
+import { ipAddress } from "../../urls"; // Ensure this points to your live server URL
 import { jwtDecode } from "jwt-decode";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Toast from 'react-native-toast-message';
 
-const OrderItem = React.memo(({ item, onStatusUpdate, loading, remarksSavedStatuses }) => { // Added remarksSavedStatuses prop
+const OrderItem = React.memo(({ item, onStatusUpdate, loading, remarksSavedStatuses }) => {
     const [localStatus, setLocalStatus] = useState(item.delivery_status || 'pending');
     const isDelivered = localStatus === 'delivered';
     const [showRemarksInput, setShowRemarksInput] = useState(false);
     const [remarks, setRemarks] = useState('');
-    const [remarksSaved, setRemarksSaved] = useState(remarksSavedStatuses ? remarksSavedStatuses[item.id] : false); // Initialize from prop
-
+    const [remarksSaved, setRemarksSaved] = useState(remarksSavedStatuses ? remarksSavedStatuses[item.id] : false);
 
     useEffect(() => {
-        setShowRemarksInput(localStatus === 'delivered' && !remarksSaved); // Conditionally show based on status and saved state
+        setShowRemarksInput(localStatus === 'delivered' && !remarksSaved);
     }, [localStatus, remarksSaved]);
-
 
     const handleStatusChange = async (newStatus) => {
         if (isDelivered) return;
@@ -53,24 +51,24 @@ const OrderItem = React.memo(({ item, onStatusUpdate, loading, remarksSavedStatu
     };
 
     const handleSaveRemarks = async () => {
-        // Get customer_id from AsyncStorage
         let customerId = null;
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
+            console.log("Token for remarks:", token);
             if (!token) throw new Error("Authentication required");
             const decoded = jwtDecode(token);
             customerId = decoded.id;
-            console.log("Customer ID from token:", customerId);
+            console.log("Customer ID for remarks:", customerId);
         } catch (error) {
             Toast.show({
                 type: 'error',
                 text1: 'Authentication Error',
-                text2: 'Could not retrieve customer ID.'
+                text2: 'Could not retrieve customer ID: ' + error.message
             });
-            return; // Exit if customerId cannot be obtained
+            return;
         }
 
-        const orderId = item.id; // Order ID is correctly from item prop
+        const orderId = item.id;
 
         if (!remarks.trim()) {
             Toast.show({
@@ -83,40 +81,34 @@ const OrderItem = React.memo(({ item, onStatusUpdate, loading, remarksSavedStatu
 
         try {
             const response = await axios.post(`http://${ipAddress}:8090/remarks-update`, {
-                customer_id: customerId, // Use customerId from token
+                customer_id: customerId,
                 order_id: orderId,
                 remarks: remarks
             });
 
-            // Check for HTTP status code 2xx for success
             if (response.status >= 200 && response.status < 300) {
                 Toast.show({
                     type: 'success',
-                    text1: 'Remarks Saved', // More direct success message
+                    text1: 'Remarks Saved',
                     text2: response.data.message || 'Remarks saved successfully.'
                 });
                 setRemarks('');
                 setShowRemarksInput(false);
-                setRemarksSaved(true); // Set remarksSaved to true after successful save
-                // Optimistic update of remarksSavedStatuses - optional, depends on if parent needs to re-render based on this
-                // if (remarksSavedStatuses) {
-                //     remarksSavedStatuses[item.id] = true; // Update the prop object - careful with immutability if prop changes trigger re-renders
-                // }
-                await AsyncStorage.setItem(`remarksSaved_${item.id}`, 'true'); // Save to AsyncStorage - still needed for persistence
+                setRemarksSaved(true);
+                await AsyncStorage.setItem(`remarksSaved_${item.id}`, 'true');
             } else {
-                // Handle HTTP error codes (4xx, 5xx) - even if backend DB insert happened
                 Toast.show({
                     type: 'error',
-                    text1: 'Error Saving Remarks', // More direct error message
-                    text2: response.data.message || 'Failed to save remarks. Please try again.' // More user-friendly message
+                    text1: 'Error Saving Remarks',
+                    text2: response.data.message || 'Failed to save remarks.'
                 });
             }
         } catch (error) {
             console.error("Error saving remarks:", error);
             Toast.show({
                 type: 'error',
-                text1: 'Error Saving Remarks', // More direct error message
-                text2: 'Failed to save remarks. Please check your network or try again.' // More user-friendly message
+                text1: 'Error Saving Remarks',
+                text2: 'Failed to save remarks: ' + error.message
             });
         }
     };
@@ -158,7 +150,7 @@ const OrderItem = React.memo(({ item, onStatusUpdate, loading, remarksSavedStatu
                 </View>
             )}
 
-            {showRemarksInput && ( // Conditionally render remarks input based on showRemarksInput
+            {showRemarksInput && (
                 <View style={styles.remarksContainer}>
                     <Text style={styles.remarksLabel}>Remarks:</Text>
                     <TextInput
@@ -175,7 +167,7 @@ const OrderItem = React.memo(({ item, onStatusUpdate, loading, remarksSavedStatu
                     </TouchableOpacity>
                 </View>
             )}
-             {isDelivered && remarksSaved && ( // Optionally show a message after saving remarks
+            {isDelivered && remarksSaved && (
                 <Text style={{ marginTop: 10, fontStyle: 'italic', color: 'gray' }}>Remarks saved.</Text>
             )}
         </View>
@@ -187,69 +179,91 @@ const DeliveryStatusUpdate = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [customerId, setCustomerId] = useState(null);
-    const [remarksSavedStatuses, setRemarksSavedStatuses] = useState({}); // State to hold all remarksSaved statuses
+    const [remarksSavedStatuses, setRemarksSavedStatuses] = useState({});
 
     useEffect(() => {
-        initializeData();
-    }, []);
+        const initializeData = async () => {
+            console.log("Starting initializeData in useEffect...");
+            try {
+                // Step 1: Fetch token and decode customerId
+                const token = await AsyncStorage.getItem("userAuthToken");
+                console.log("Token from AsyncStorage:", token);
 
-    const initializeData = async () => {
-        try {
-            const token = await AsyncStorage.getItem("userAuthToken");
-            if (!token) throw new Error("Authentication required");
+                if (!token) {
+                    console.log("No token available");
+                    throw new Error("No authentication token found - please log in");
+                }
 
-            const decoded = jwtDecode(token);
-            setCustomerId(decoded.id);
-            await fetchOrdersAndRemarks(decoded.id); // Fetch orders and remarks together
-        } catch (error) {
-            setError(error.message);
-            Toast.show({
-                type: 'error',
-                text1: 'Error',
-                text2: 'Failed to initialize data'
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
+                let decoded;
+                try {
+                    decoded = jwtDecode(token);
+                    console.log("Decoded JWT:", decoded);
+                } catch (decodeError) {
+                    console.error("JWT Decode Error:", decodeError.message);
+                    throw new Error("Failed to decode token");
+                }
 
-    const fetchOrdersAndRemarks = async (userId) => {
-        try {
-            console.time("Fetch Orders API Time"); // Start timer for fetch orders
-            const response = await axios.get(`http://${ipAddress}:8090/get-orders/${userId}`);
-            console.timeEnd("Fetch Orders API Time"); // End timer for fetch orders
+                const customerId = decoded.id;
+                if (!customerId) {
+                    console.log("No customerId in token");
+                    throw new Error("Customer ID not found in token");
+                }
 
-            if (!response.data.status) {
-                throw new Error(response.data.message);
+                console.log("Customer ID extracted:", customerId);
+                setCustomerId(customerId);
+
+                // Step 2: Fetch orders and remarks with customerId
+                try {
+                    console.log("Fetching orders for customerId:", customerId);
+                    const response = await axios.get(`http://${ipAddress}:8090/get-orders/${customerId}`);
+                    console.log("API Response:", response.data);
+
+                    if (!response.data.status) {
+                        throw new Error(response.data.message || "API returned failure status");
+                    }
+
+                    const fetchedOrders = response.data.orders || [];
+                    console.log("Fetched Orders:", fetchedOrders);
+                    setOrders(fetchedOrders);
+
+                    const orderIds = fetchedOrders.map(order => order.id);
+                    console.log("Order IDs:", orderIds);
+                    const savedStatuses = await loadAllRemarksSaved(orderIds);
+                    console.log("Remarks Saved Statuses:", savedStatuses);
+                    setRemarksSavedStatuses(savedStatuses);
+                } catch (fetchError) {
+                    console.error("Fetch Error:", fetchError.message);
+                    throw new Error("Failed to fetch orders: " + fetchError.message);
+                }
+            } catch (error) {
+                console.error("Initialize Error:", error.message);
+                setError(error.message);
+                Toast.show({
+                    type: 'error',
+                    text1: 'Error',
+                    text2: `Failed to load data: ${error.message}`
+                });
+            } finally {
+                console.log("Setting loading to false");
+                setLoading(false);
             }
-            const fetchedOrders = response.data.orders;
-            setOrders(fetchedOrders);
+        };
 
-            // Prefetch remarksSaved statuses for all orders
-            const orderIds = fetchedOrders.map(order => order.id);
-            const savedStatuses = await loadAllRemarksSaved(orderIds);
-            setRemarksSavedStatuses(savedStatuses);
-
-
-        } catch (error) {
-            throw new Error("Failed to fetch orders and remarks data");
-        }
-    };
-
+        initializeData();
+    }, []); // Empty dependency array ensures it runs once on mount
 
     const loadAllRemarksSaved = async (orderIds) => {
         const statuses = {};
         try {
-            await Promise.all(orderIds.map(async (orderId) => { // Use Promise.all for parallel reads
+            await Promise.all(orderIds.map(async (orderId) => {
                 const savedStatus = await AsyncStorage.getItem(`remarksSaved_${orderId}`);
-                statuses[orderId] = savedStatus === 'true'; // Store boolean value
+                statuses[orderId] = savedStatus === 'true';
             }));
         } catch (error) {
             console.error("Error loading remarks saved statuses:", error);
         }
         return statuses;
     };
-
 
     const handleStatusUpdate = async (orderId, newStatus) => {
         setLoading(true);
@@ -264,7 +278,6 @@ const DeliveryStatusUpdate = () => {
             );
 
             if (response.data.status) {
-                // Update local state
                 setOrders(prevOrders =>
                     prevOrders.map(order =>
                         order.id === orderId
@@ -272,7 +285,6 @@ const DeliveryStatusUpdate = () => {
                             : order
                     )
                 );
-
                 Toast.show({
                     type: 'success',
                     text1: 'Success',
@@ -282,7 +294,13 @@ const DeliveryStatusUpdate = () => {
                 throw new Error(response.data.message);
             }
         } catch (error) {
-            throw new Error("Failed to update status");
+            console.error("Status Update Error:", error.message);
+            Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to update status: ' + error.message
+            });
+            throw error;
         } finally {
             setLoading(false);
         }
@@ -300,15 +318,16 @@ const DeliveryStatusUpdate = () => {
         <ScrollView contentContainerStyle={styles.scrollContainer}>
             <View style={styles.container}>
                 <Text style={styles.headerText}>Delivery Status</Text>
-
-                {orders.length > 0 ? (
+                {error ? (
+                    <Text style={styles.emptyText}>{error}</Text>
+                ) : orders.length > 0 ? (
                     orders.map((item) => (
                         <OrderItem
                             key={item.id.toString()}
                             item={item}
                             onStatusUpdate={handleStatusUpdate}
                             loading={loading}
-                            remarksSavedStatuses={remarksSavedStatuses} // Pass prefetched statuses
+                            remarksSavedStatuses={remarksSavedStatuses}
                         />
                     ))
                 ) : (
@@ -343,17 +362,17 @@ const styles = StyleSheet.create({
     orderCard: {
         backgroundColor: '#FFFFFF',
         borderRadius: 8,
-        padding: 8, // Reduced padding
-        marginBottom: 8, // Reduced margin
+        padding: 8,
+        marginBottom: 8,
         elevation: 2,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.1,
         shadowRadius: 2,
-        minHeight: 100, // Set minimum height
+        minHeight: 100,
     },
     deliveredCard: {
-        backgroundColor: '#F8FFF8', // Lighter green background
+        backgroundColor: '#F8FFF8',
         borderLeftWidth: 3,
         borderLeftColor: '#4CAF50'
     },
@@ -361,7 +380,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 4 // Reduced margin
+        marginBottom: 4
     },
     orderTitle: {
         fontSize: 15,
@@ -396,7 +415,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#F5F5F5',
         borderRadius: 6,
         width: '100%',
-        height: 50 // Reduced height
+        height: 50
     },
     disabledPicker: {
         opacity: 0.7,
@@ -426,7 +445,7 @@ const styles = StyleSheet.create({
         borderWidth: 0.5,
         borderColor: '#BDBDBD',
         padding: 8,
-        minHeight: 40, // Reduced height
+        minHeight: 40,
         textAlignVertical: 'top',
         marginBottom: 8
     },
