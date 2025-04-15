@@ -107,7 +107,7 @@ const AdminAssignedUsersPage = () => {
             }
 
             const responseData = await response.json();
-            console.log(responseData)
+            console.log("assigned users are " ,responseData)
             if (responseData.success) {
                 setAssignedUsers(responseData.assignedUsers);
             } else {
@@ -339,7 +339,7 @@ const AdminAssignedUsersPage = () => {
                                     />
                                     <View style={styles.orderInfo}>
                                         <Text style={styles.orderIdText}><Text style={styles.boldText}>Order ID:</Text> {order.id}</Text>
-                                        <Text style={styles.orderDateText}><Text style={styles.boldText}>Placed On:</Text> {moment(new Date(order.placed_on * 1000)).format('MMM DD, YYYY')}</Text>
+                                        <Text style={styles.orderDateText}><Text style={styles.boldText}>Placed On:</Text> {moment(new Date(order.placed_on * 1000)).format('DD MMM, YYYY')}</Text>
                                         <Text style={styles.orderAmountText}><Text style={styles.boldText}>Amount:</Text> ₹{order.amount || 'N/A'}</Text>
                                     </View>
                                     <View style={styles.orderStatusContainer}>
@@ -372,7 +372,7 @@ const AdminAssignedUsersPage = () => {
                                     />
                                     <View style={styles.orderInfo}>
                                         <Text style={styles.orderIdText}><Text style={styles.boldText}>Order ID:</Text> {order.id}</Text>
-                                        <Text style={styles.orderDateText}><Text style={styles.boldText}>Placed On:</Text> {moment(new Date(order.placed_on * 1000)).format('MMM DD, YYYY')}</Text>
+                                        <Text style={styles.orderDateText}><Text style={styles.boldText}>Placed On:</Text> {moment(new Date(order.placed_on * 1000)).format('DD MMM, YYYY')}</Text>
                                         <Text style={styles.orderAmountText}><Text style={styles.boldText}>Amount:</Text> ₹{order.amount || 'N/A'}</Text>
                                     </View>
                                     <View style={styles.orderStatusContainer}>

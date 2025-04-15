@@ -442,42 +442,58 @@ const UpdateOrdersU = () => {
     );
 
     const renderProductItem = ({ item, index }) => {
-        const totalAmount = item.quantity * item.price;
-        return (
-            <View style={styles.productItem}>
-                <View style={styles.productHeader}>
-                    <View>
-                        <Text style={styles.productNameText}>{item.name}</Text>
-                        <Text style={styles.productCategoryText}>({item.category})</Text>
-                        <Text style={styles.gstText}>GST: {item.gst_rate}%</Text>
+            const totalAmount = item.quantity * item.price;
+            return (
+                <View style={styles.productItem}>
+                    <View style={styles.productHeader}>
+                        <View>
+                            <Text style={styles.productNameText}>{item.name}</Text>
+                            <Text style={styles.productCategoryText}>({item.category})</Text>
+                        </View>
+                        <TouchableOpacity
+                            style={styles.deleteButton}
+                            onPress={() => handleDeleteProductItem(index)}
+                            disabled={deleteLoading}
+                        >
+                            {deleteLoading && deleteLoadingIndex === index ? (
+                                <ActivityIndicator size="small" color="#d9534f" />
+                            ) : (
+                                <Icon name="trash" size={20} color="#d9534f" />
+                            )}
+                        </TouchableOpacity>
                     </View>
-                    <TouchableOpacity
-                        style={styles.deleteButton}
-                        onPress={() => handleDeleteProductItem(index)}
-                        disabled={deleteLoading}
-                    >
-                        {deleteLoading && deleteLoadingIndex === index ? (
-                            <ActivityIndicator size="small" color="#d9534f" />
-                        ) : (
-                            <Icon name="trash" size={20} color="#d9534f" />
-                        )}
-                    </TouchableOpacity>
+                    <View style={styles.quantityContainer}>
+                        <Text style={styles.quantityLabel}>Qty:</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    const newProducts = [...products];
+                                    newProducts[index].quantity = Math.max(0, item.quantity - 1);
+                                    setProducts(newProducts);
+                                }}
+                            >
+                                <Text style={{ fontSize: 20, paddingHorizontal: 10 }}>-</Text>
+                            </TouchableOpacity>
+                            <Text style={{ fontSize: 16, width: 40, textAlign: 'center' }}>
+                                {item.quantity}
+                            </Text>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    const newProducts = [...products];
+                                    newProducts[index].quantity = item.quantity + 1;
+                                    setProducts(newProducts);
+                                }}
+                            >
+                                <Text style={{ fontSize: 20, paddingHorizontal: 10 }}>+</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                    <Text style={styles.amountText}>₹{totalAmount.toFixed(2)}</Text>
                 </View>
-                <View style={styles.quantityContainer}>
-                    <Text style={styles.quantityLabel}>Qty:</Text>
-                    <TextInput
-                        style={styles.quantityInput}
-                        keyboardType="number-pad"
-                        value={String(item.quantity)}
-                        onChangeText={(text) => handleProductQuantityChange(index, text)}
-                        editable={!isOrderUpdated}
-                    />
-                </View>
-                <Text style={styles.amountText}>₹{totalAmount.toFixed(2)}</Text>
-            </View>
-        );
-    };
+            );
+        };
 
+        
     return (
         <View style={styles.container}>
             <Text style={styles.headerText}>Update Orders</Text>

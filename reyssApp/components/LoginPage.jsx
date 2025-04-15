@@ -67,7 +67,7 @@ const LoginPage = ({ navigation }) => {
     // Your existing JSX remains unchanged
     <View style={styles.container}>
       <View style={styles.topSection}>
-        <Image source={require("../assets/SL.png")} style={styles.logo} />
+        <Image source={require("../assets/SL_1.jpg")} style={styles.logo} />
         <Text style={styles.title}>REYSS</Text>
         <Text style={styles.subtitle}>WELCOME TO SL ENTERPRISESS</Text>
       </View>
@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logo: {
-    width: 150,
+    width: 200,
     height: 150,
     marginBottom: 20,
   },

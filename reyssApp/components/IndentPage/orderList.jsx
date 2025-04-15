@@ -1,10 +1,8 @@
 import React from "react";
 import { ScrollView, StyleSheet } from "react-native";
 import OrderCard from "./orderCard";
-
 import Toast from "react-native-toast-message";
 import moment from "moment";
-
 import { ipAddress } from "../../urls";
 
 const showToast = (message, type = "info") => {
@@ -23,10 +21,18 @@ const showToast = (message, type = "info") => {
 };
 
 const OrdersList = ({ amOrder, pmOrder, selectedDate, navigation }) => {
-
     const handleOrderClick = async (order, shift) => {
         try {
-            const response = await fetch(`http://${ipAddress}:8090/allowed-shift?shift=${shift}`); // Modified fetch URL
+            // If order exists, navigate to UpdateOrdersU
+            if (order) {
+                navigation.navigate("UpdateOrdersPage", { order, selectedDate, shift });
+            
+                showToast(`Navigating to update existing ${shift} order.`);
+                return;
+            }
+
+            // Otherwise, check shift allowance for placing a new order
+            const response = await fetch(`http://${ipAddress}:8090/allowed-shift?shift=${shift}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -43,13 +49,9 @@ const OrdersList = ({ amOrder, pmOrder, selectedDate, navigation }) => {
                 return;
             }
 
-            // Navigate to PlaceOrderPage if time is allowed
+            // Navigate to PlaceOrderPage if time is allowed and no order exists
             navigation.navigate("PlaceOrderPage", { order, selectedDate, shift });
-            if (order) {
-                showToast(`Navigating to existing ${shift} order details.`);
-            } else {
-                showToast(`Navigating to place new ${shift} order.`);
-            }
+            showToast(`Navigating to place new ${shift} order.`);
 
         } catch (error) {
             console.error("Error checking shift allowance:", error);

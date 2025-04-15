@@ -10,8 +10,9 @@ import moment from 'moment';
 import { checkTokenAndRedirect } from '../../services/auth';
 import axios from 'axios';
 import { ipAddress } from '../../urls';
+import { memo } from 'react';
 
-const UpdateOrderScreen = () => {
+const UpdateOrdersSA = () => {
     const navigation = useNavigation();
     const [orders, setOrders] = useState([]);
     const [selectedOrderId, setSelectedOrderId] = useState(null);
@@ -33,24 +34,51 @@ const UpdateOrderScreen = () => {
     const fetchAdminOrders = async () => {
         setLoading(true);
         setError(null);
+        
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
+            if (!token) throw new Error("No authentication token found");
+            
             const decodedToken = jwtDecode(token);
             const adminId = decodedToken.id1;
-
-            const url = `http://${ipAddress}:8090/get-admin-orders/${adminId}`;
-            const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
-            const ordersResponse = await fetch(url, { headers });
-
-            if (!ordersResponse.ok) throw new Error(`Failed to fetch admin orders: ${ordersResponse.status}`);
-            const ordersData = await ordersResponse.json();
+    
+            const response = await axios.get(`http://${ipAddress}:8090/get-orders-sa`, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                }
+                // Removed orderBy param since the API now handles sorting
+            });
+    
+            if (!response.data || !response.data.status) {
+                throw new Error(response.data?.message || "No valid data received from server");
+            }
+            
+            console.log("Fetched orders data:", response.data);
+            
             const todayFormatted = moment().format("YYYY-MM-DD");
-            const todaysOrders = ordersData.orders.filter(order => moment.unix(parseInt(order.placed_on, 10)).format("YYYY-MM-DD") === todayFormatted);
-
+            const todaysOrders = response.data.orders.filter(order => {
+                // Handle both timestamp (number) and string date formats
+                const orderDate = order.placed_on?.toString().length === 10 ? 
+                    moment.unix(parseInt(order.placed_on, 10)) :
+                    moment(order.placed_on);
+                    
+                return orderDate.format("YYYY-MM-DD") === todayFormatted;
+            });
+    
             setOrders(todaysOrders);
-        } catch (fetchOrdersError) {
-            setError(fetchOrdersError.message || "Failed to fetch admin orders.");
-            Toast.show({ type: 'error', text1: 'Fetch Error', text2: fetchOrdersError.message });
+            
+        } catch (error) {
+            const errorMessage = error.response?.data?.message || 
+                               error.message || 
+                               "Failed to fetch admin orders";
+            setError(errorMessage);
+            Toast.show({
+                type: 'error',
+                text1: 'Fetch Error',
+                text2: errorMessage
+            });
+            console.error("Error fetching admin orders:", error);
         } finally {
             setLoading(false);
         }
@@ -360,56 +388,58 @@ const UpdateOrderScreen = () => {
     );
 
     const renderProductItem = ({ item, index }) => {
-            const totalAmount = item.quantity * item.price;
-            return (
-                <View style={styles.productItem}>
-                    <View style={styles.productHeader}>
-                        <View>
-                            <Text style={styles.productNameText}>{item.name}</Text>
-                            <Text style={styles.productCategoryText}>({item.category})</Text>
-                        </View>
+        const totalAmount = item.quantity * item.price;
+        return (
+            <View style={styles.productItem}>
+                <View style={styles.productHeader}>
+                    <View>
+                        <Text style={styles.productNameText}>{item.name}</Text>
+                        <Text style={styles.productCategoryText}>({item.category})</Text>
+                    </View>
+                    <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={() => handleDeleteProductItem(index)}
+                        disabled={deleteLoading}
+                    >
+                        {deleteLoading && deleteLoadingIndex === index ? (
+                            <ActivityIndicator size="small" color="#d9534f" />
+                        ) : (
+                            <Icon name="trash" size={20} color="#d9534f" />
+                        )}
+                    </TouchableOpacity>
+                </View>
+                <View style={styles.quantityContainer}>
+                    <Text style={styles.quantityLabel}>Qty:</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <TouchableOpacity
-                            style={styles.deleteButton}
-                            onPress={() => handleDeleteProductItem(index)}
-                            disabled={deleteLoading}
+                            onPress={() => {
+                                const newProducts = [...products];
+                                newProducts[index].quantity = Math.max(0, item.quantity - 1);
+                                setProducts(newProducts);
+                            }}
                         >
-                            {deleteLoading && deleteLoadingIndex === index ? (
-                                <ActivityIndicator size="small" color="#d9534f" />
-                            ) : (
-                                <Icon name="trash" size={20} color="#d9534f" />
-                            )}
+                            <Text style={{ fontSize: 20, paddingHorizontal: 10 }}>-</Text>
+                        </TouchableOpacity>
+                        <Text style={{ fontSize: 16, width: 40, textAlign: 'center' }}>
+                            {item.quantity}
+                        </Text>
+                        <TouchableOpacity
+                            onPress={() => {
+                                const newProducts = [...products];
+                                newProducts[index].quantity = item.quantity + 1;
+                                setProducts(newProducts);
+                            }}
+                        >
+                            <Text style={{ fontSize: 20, paddingHorizontal: 10 }}>+</Text>
                         </TouchableOpacity>
                     </View>
-                    <View style={styles.quantityContainer}>
-                        <Text style={styles.quantityLabel}>Qty:</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <TouchableOpacity
-                                onPress={() => {
-                                    const newProducts = [...products];
-                                    newProducts[index].quantity = Math.max(0, item.quantity - 1);
-                                    setProducts(newProducts);
-                                }}
-                            >
-                                <Text style={{ fontSize: 20, paddingHorizontal: 10 }}>-</Text>
-                            </TouchableOpacity>
-                            <Text style={{ fontSize: 16, width: 40, textAlign: 'center' }}>
-                                {item.quantity}
-                            </Text>
-                            <TouchableOpacity
-                                onPress={() => {
-                                    const newProducts = [...products];
-                                    newProducts[index].quantity = item.quantity + 1;
-                                    setProducts(newProducts);
-                                }}
-                            >
-                                <Text style={{ fontSize: 20, paddingHorizontal: 10 }}>+</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                    <Text style={styles.amountText}>₹{totalAmount.toFixed(2)}</Text>
                 </View>
-            );
-        };
+                <Text style={styles.amountText}>₹{totalAmount.toFixed(2)}</Text>
+            </View>
+        );
+    };
+    
+    
 
     return (
         <View style={styles.container}>
@@ -502,4 +532,4 @@ const styles = StyleSheet.create({
     emptyText: { textAlign: 'center', color: '#666', padding: 20 }
 });
 
-export default UpdateOrderScreen;
+export default UpdateOrdersSA;

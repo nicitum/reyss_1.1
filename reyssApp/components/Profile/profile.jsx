@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, LayoutAnimation, Platform, UIManager } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, UIManager } from "react-native";
 import MaterialIcons from "react-native-vector-icons/MaterialIcons";
 import LogOutButton from "../LogoutButton";
 import { useNavigation } from "@react-navigation/native";
@@ -25,8 +25,6 @@ const ProfilePage = ({ setIsLoggedIn }) => {
         title: "",
         content: null,
     });
-    const [isOrdersSubMenuOpen, setIsOrdersSubMenuOpen] = useState(false);
-    const [isReportsSubMenuOpen, setIsReportsSubMenuOpen] = useState(false); // New state for Reports submenu
 
     useEffect(() => {
         const getUserRole = async () => {
@@ -54,29 +52,6 @@ const ProfilePage = ({ setIsLoggedIn }) => {
         setModalData({ ...modalData, visible: false });
     };
 
-    const toggleOrdersSubMenu = () => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setIsOrdersSubMenuOpen(!isOrdersSubMenuOpen);
-        setIsReportsSubMenuOpen(false); // Close Reports submenu if Orders is opened
-    };
-
-    const toggleReportsSubMenu = () => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setIsReportsSubMenuOpen(!isReportsSubMenuOpen);
-        setIsOrdersSubMenuOpen(false); // Close Orders submenu if Reports is opened
-    };
-
-
-    const navigateToAdminOrders = () => {
-        toggleOrdersSubMenu();
-    };
-
-    const navigateToLoadingSlip = () => {
-        toggleReportsSubMenu();
-        navigation.navigate("LoadingSlip"); // Navigate to LoadingSlip screen
-    };
-
-
     return (
         <View style={styles.container}>
             <View style={styles.header}>
@@ -84,6 +59,7 @@ const ProfilePage = ({ setIsLoggedIn }) => {
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContainer}>
+                {/* Profile - Available to all roles */}
                 <TouchableOpacity style={styles.menuItem} onPress={() => openModal(ProfileContent)}>
                     <View style={styles.menuIconText}>
                         <MaterialIcons name="person-outline" size={24} color="#ffcc00" />
@@ -92,218 +68,203 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
                 </TouchableOpacity>
 
-                {(userRole === "admin" || userRole === "user") && (// Conditionally render Orders menu for non-superadmins
+                {/* Orders Options for Admin */}
+                {userRole === "admin" && (
+                    <>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("UpdateOrders")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Update Orders</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("AdminAssignedUsersPage")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Admin Orders</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("PlaceOrderAdmin")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Auto Order</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("CollectCash")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Collect Cash</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("Invoice")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Invoice</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                    </>
+                )}
+
+                {/* Orders Options for User */}
+                {userRole === "user" && (
+                    <>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("Orders")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Order History</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("DeliveryStatusUpdate")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Delivery Status Update</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("PaymentHistory")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Payment History</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                    </>
+                )}
+
+                {/* Reports Options for Admin */}
+                {userRole === "admin" && (
                     <TouchableOpacity
                         style={styles.menuItem}
-                        onPress={toggleOrdersSubMenu}
+                        onPress={() => navigation.navigate("LoadingSlip")}
                     >
                         <View style={styles.menuIconText}>
-                        <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
-                        <Text style={styles.menuText}>Orders</Text>
+                            <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                            <Text style={styles.menuText}>Loading Slip</Text>
                         </View>
-                        <MaterialIcons name={isOrdersSubMenuOpen ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={24} color="#ffcc00" />
+                        <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
                     </TouchableOpacity>
                 )}
 
-                {isOrdersSubMenuOpen && (
-                    <View style={styles.subMenu}>
-                        {userRole === "admin" ? (
-                            // Admin Submenu
-                            <>
-                                <TouchableOpacity
-                                    style={styles.subMenuItem}
-                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("UpdateOrders"); }}
-                                >
-                                    <Text style={styles.subMenuText}>Update Orders</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={styles.subMenuItem}
-                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("AdminAssignedUsersPage"); }}
-                                >
-                                    <Text style={styles.subMenuText}>Admin Orders</Text>
-                                </TouchableOpacity>
+                {/* Reports Options for Superadmin */}
+                {userRole === "superadmin" && (
+                    <>
 
-                                <TouchableOpacity
-                                    style={styles.subMenuItem}
-                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("PlaceOrderAdmin"); }}
-                                >
-                                    <Text style={styles.subMenuText}>Auto Order</Text>
-                                </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("UpdateOrdersSA")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Update/Edit Orders</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
 
-
-                                <TouchableOpacity
-                                    style={styles.subMenuItem}
-                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("CollectCash"); }}
-                                >
-                                    <Text style={styles.subMenuText}>Collect Cash</Text>
-                                </TouchableOpacity>
-
-
-                                <TouchableOpacity
-                                    style={styles.subMenuItem}
-                                    onPress={() => { navigateToAdminOrders(); navigation.navigate("Invoice"); }}
-                                >
-                                    <Text style={styles.subMenuText}>Invoice</Text>
-                                </TouchableOpacity>
-
-
-                                
-                            </>
-                        ) : (
-                            // User Submenu
-                            <>
-                                <TouchableOpacity
-                                    style={styles.subMenuItem}
-                                    onPress={() => { toggleOrdersSubMenu(); navigation.navigate("Orders"); }} // Navigate to Order History (current "Orders" screen)
-                                >
-                                    <Text style={styles.subMenuText}>Order History</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={styles.subMenuItem}
-                                    onPress={() => { toggleOrdersSubMenu(); navigation.navigate("UpdateOrdersU"); }}
-                                >
-                                    <Text style={styles.subMenuText}>Edit Orders</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={styles.subMenuItem}
-                                    onPress={() => { toggleOrdersSubMenu(); navigation.navigate("DeliveryStatusUpdate"); }}
-                                >
-                                    <Text style={styles.subMenuText}>Delivery Status Update</Text>
-                                </TouchableOpacity>
-
-                            </>
-                        )}
-                    </View>
-                )}
-                {(userRole === "admin" || userRole === "superadmin") && (
-                <TouchableOpacity
-                    style={styles.menuItem}
-                    onPress={toggleReportsSubMenu}
-                >
-                    <View style={styles.menuIconText}>
-                    <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
-                    <Text style={styles.menuText}>Reports</Text>
-                    </View>
-                    <MaterialIcons
-                    name={isReportsSubMenuOpen ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                    size={24}
-                    color="#ffcc00"
-                    />
-                </TouchableOpacity>
-                )}
-
-                {isReportsSubMenuOpen && (userRole === "admin" || userRole === "superadmin") && (
-                <View style={styles.subMenu}>
-                    {userRole === "admin" && (
-                    <TouchableOpacity
-                        style={styles.subMenuItem}
-                        onPress={navigateToLoadingSlip}
-                    >
-                        <Text style={styles.subMenuText}>Loading Slip</Text>
-                    </TouchableOpacity>
-                    )}
-
-                    {userRole === "superadmin" && (
-                    <TouchableOpacity
-                        style={styles.subMenuItem}
-                        onPress={() => {
-                        navigation.navigate("CreditLimit");
-                        }}
-                    >
-                        <Text style={styles.subMenuText}>CreditLimit</Text>
-                        
-                    </TouchableOpacity>
-                    
-                    )}
-                    {userRole === "superadmin" && (
-                    <TouchableOpacity
-                        style={styles.subMenuItem}
-                        onPress={() => {
-                        navigation.navigate("Remarks");
-                        }}
-                    >
-                        <Text style={styles.subMenuText}>Remarks</Text>
-                        
-                    </TouchableOpacity>
-                    
-                    )}
-
-
-                    {userRole === "superadmin" && (
-                    <TouchableOpacity
-                        style={styles.subMenuItem}
-                        onPress={() => {
-                        navigation.navigate("CashCollectedReport");
-                        }}
-                    >
-                        <Text style={styles.subMenuText}>Cash Collected</Text>
-                        
-                    </TouchableOpacity>
-                    
-                    )}
-
-
-                    {userRole === "superadmin" && (
-                    <TouchableOpacity
-                        style={styles.subMenuItem}
-                        onPress={() => {
-                        navigation.navigate("AmountDueReport");
-                        }}
-                    >
-                        <Text style={styles.subMenuText}>Outstanding Report</Text>
-                        
-                    </TouchableOpacity>
-                    
-                    )}
-
-
-                    {userRole === "superadmin" && (
-                    <TouchableOpacity
-                        style={styles.subMenuItem}
-                        onPress={() => {
-                        navigation.navigate("AutoOrderPage");
-                        }}
-                    >
-                        <Text style={styles.subMenuText}>Auto Order</Text>
-                        
-                    </TouchableOpacity>
-                    
-                    )}
-                    
-
-                    {userRole === "superadmin" && (
-                    <TouchableOpacity
-                        style={styles.subMenuItem}
-                        onPress={() => {
-                        navigation.navigate("ItemsReport");
-                        }}
-                    >
-                        <Text style={styles.subMenuText}>Items Report</Text>
-                        
-                    </TouchableOpacity>
-                    
-                    )}
-
-
-                    {userRole === "superadmin" && (
-                    <TouchableOpacity
-                        style={styles.subMenuItem}
-                        onPress={() => {
-                        navigation.navigate("AutoOrderUpdate");
-                        }}
-                    >
-                        <Text style={styles.subMenuText}>Auto Order Update</Text>
-                        
-                    </TouchableOpacity>
-                    
-                    )}
-                </View>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("CreditLimit")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Credit Limit</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("Remarks")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Remarks</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("CashCollectedReport")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Cash Collected</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("AmountDueReport")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Outstanding Report</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("AutoOrderPage")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Auto Order</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("ItemsReport")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Items Report</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("AutoOrderUpdate")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Auto Order Update</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+                    </>
                 )}
 
-             
-
-                
-
+                {/* Privacy Policy and Terms & Conditions at the end - Available to all roles */}
                 <TouchableOpacity style={styles.menuItem}>
                     <View style={styles.menuIconText}>
                         <MaterialIcons name="security" size={24} color="#ffcc00" />
@@ -311,7 +272,6 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     </View>
                     <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
                 </TouchableOpacity>
-
                 <TouchableOpacity style={styles.menuItem}>
                     <View style={styles.menuIconText}>
                         <MaterialIcons name="info-outline" size={24} color="#ffcc00" />
@@ -332,6 +292,15 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                 </View>
             </View>
 
+            
+            
+            <Text style={styles.creditText}>
+                Copyright © REYSS SL Enterprisess
+            </Text>
+
+            <Text style={styles.creditText}>
+                Designed & Developed by Nicitum Technologies
+            </Text>
 
         </View>
     );
@@ -342,8 +311,17 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: "#f0f0f0",
     },
+
+    creditText: {
+        textAlign: 'center',
+        fontSize: 14,
+        color: '#000',
+        paddingBottom: 10,
+        fontStyle: 'italic',
+        fontWeight: 'bold' // Added fontWeight bold
+    },
     header: {
-        backgroundColor: "#ffcc00", // Yellow Header
+        backgroundColor: "#ffcc00",
         paddingHorizontal: 20,
         paddingTop: 50,
         paddingBottom: 15,
@@ -382,54 +360,21 @@ const styles = StyleSheet.create({
         marginLeft: 15,
         color: "#333",
     },
-    subMenu: {
-        backgroundColor: "#fff",
-        borderRadius: 8,
-        marginTop: 0,
-        marginBottom: 8,
-        marginLeft: 10,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: {width: 0, height: 2},
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        overflow: 'hidden',
+    logoutSection: {
+        padding: 20,
+        paddingBottom: 30,
+        backgroundColor: '#f0f0f0',
+        width: '100%',
     },
-    subMenuItem: {
-        paddingVertical: 15,
-        paddingHorizontal: 30,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: '#e0e0e0',
+    buttonContainer: {
+        marginVertical: 8,
+        minHeight: 45,
+        width: '100%',
     },
-    subMenuText: {
-        fontSize: 16,
-        color: "#555",
-    },
-   // Replace the related styles in your StyleSheet:
-        logoutSection: {
-            padding: 20,
-            paddingBottom: 30,
-            backgroundColor: '#f0f0f0',
-            width: '100%',
-        },
-        buttonContainer: {
-            marginVertical: 8,
-            minHeight: 45, // Ensure minimum height for buttons
-            width: '100%',
-        },
-        actionButton: {
-            width: '100%',
-            minHeight: 45,
-            marginVertical: 5,
-        },
-
-    logoutButtonWrapper: {
-        marginBottom: 10,
-        paddingHorizontal: 10,
-    },
-    passwordChangeButtonWrapper: {
-        marginBottom: 10,
-        paddingHorizontal: 10,
+    actionButton: {
+        width: '100%',
+        minHeight: 45,
+        marginVertical: 5,
     },
 });
 

@@ -24,7 +24,7 @@ import { Linking } from "react-native";
 const formatDate = (epochTime) => {
     if (!epochTime) return "N/A";
     const date = new Date(epochTime * 1000);
-    return date.toLocaleDateString();
+    return date.toLocaleDateString('en-gb');
 };
 
 

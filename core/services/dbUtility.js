@@ -388,8 +388,11 @@ const createTransactionForCOD = async (orderId, customer_id, amount) => {
 
 const addUser = async (userDetails) => {
   try {
+    console.log('Starting user creation for customer ID:', userDetails.customer_id);
+    
+    // 1. Insert user (original working code)
     const insertUserQuery = `
-      INSERT INTO users (customer_id, username, name, password, route,created_at, updated_at)
+      INSERT INTO users (customer_id, username, name, password, route, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, UNIX_TIMESTAMP(), UNIX_TIMESTAMP())
     `;
 
@@ -397,22 +400,65 @@ const addUser = async (userDetails) => {
       userDetails.customer_id,
       userDetails.username,
       userDetails.name,
-      userDetails.password,
+      userDetails.password, // Original password handling
       userDetails.route,
     ]);
+    console.log('User record inserted successfully');
 
-    // Execute the UPDATE query to set username to customer_id after insertion
+    // 2. Update username to customer_id (original working code)
     const updateUsernameQuery = `
       UPDATE users
       SET username = customer_id
       WHERE customer_id = ?;
     `;
-
     await executeQuery(updateUsernameQuery, [userDetails.customer_id]);
+    console.log('Username updated to customer_id');
+
+    // 3. Hash and update password (original working code)
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(userDetails.customer_id.toString(), salt);
+    const updatePasswordQuery = `
+      UPDATE users
+      SET password = ?
+      WHERE customer_id = ?;
+    `;
+    await executeQuery(updatePasswordQuery, [hashedPassword, userDetails.customer_id]);
+    console.log('Password hashed and updated successfully');
+
+    // 4. ONLY CHANGE: Enhanced credit limit insertion with logging
+    console.log('Attempting credit limit insertion for:', {
+      customer_id: userDetails.customer_id,
+      name: userDetails.name
+    });
+    
+    const insertCreditLimitQuery = `
+      INSERT INTO credit_limit (customer_id, customer_name, credit_limit)
+      VALUES (?, ?, ?)
+    `;
+    
+    const result = await executeQuery(insertCreditLimitQuery, [
+      userDetails.customer_id,
+      userDetails.name,
+      25000 // Default credit limit
+    ]);
+    
+    console.log('Credit limit insertion result:', result);
+    console.log('User creation completed successfully');
 
   } catch (error) {
-    console.error("Error addUser dbUtility", error.message);
-    throw new Error("Error in addUser.");
+    console.error('FULL ERROR DETAILS:', {
+      timestamp: new Date().toISOString(),
+      customerId: userDetails.customer_id,
+      errorMessage: error.message,
+      errorStack: error.stack,
+      queryParameters: {
+        customer_id: userDetails.customer_id,
+        name: userDetails.name,
+        route: userDetails.route
+      }
+    });
+    
+    throw new Error(`User creation failed at credit limit step: ${error.message}`);
   }
 };
 

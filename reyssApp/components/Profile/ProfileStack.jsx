@@ -21,6 +21,8 @@ import Invoice from '../route_mgr/Invoice';
 import ItemsReport from './ItemsReport';
 
 import AutoOrderUpdate from './AutoOrderUpdate';
+import UpdateOrdersSA from './UpdateOrdersSA';
+import PaymentHistory from './PaymentHistory';
 
 const Stack = createStackNavigator();
 
@@ -146,9 +148,23 @@ const ProfileStack = () => {
       />
 
     <Stack.Screen 
+        name="UpdateOrdersSA"
+        component={UpdateOrdersSA}
+        options={{ title: 'Order Update' }} 
+      />
+
+
+    <Stack.Screen 
         name="AutoOrderUpdate"
         component={AutoOrderUpdate} 
         options={{ title: 'Auto Order Update' }} 
+      />
+
+
+      <Stack.Screen 
+        name="PaymentHistory"
+        component={PaymentHistory} 
+        options={{ title: 'Payment History' }} 
       />
 
 

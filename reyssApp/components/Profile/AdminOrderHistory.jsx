@@ -357,9 +357,7 @@ const AdminOrderHistory = () => {
                     </TouchableOpacity>
                 </View>
                 <View style={styles.reportButtonContainer}>
-                    <TouchableOpacity style={styles.reportButton} onPress={generateOrderExcelReport}>
-                        <Text style={styles.reportButtonText}>Generate Report</Text>
-                    </TouchableOpacity>
+                    
                 </View>
             </View>
 

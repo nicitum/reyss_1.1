@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/SL.png",
+      "image": "./assets/SL_1.jpg",
       "backgroundColor": "#ffffff"
     },
     "ios": {
@@ -21,7 +21,7 @@
       "permissions": ["android.permission.INTERNET"] 
     },
     "web": {
-      "favicon": "./assets/SL.png"
+      "favicon": "./assets/SL_1.jpg"
     },
     "extra": {
       "eas": {

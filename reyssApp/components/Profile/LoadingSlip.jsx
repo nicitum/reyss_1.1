@@ -293,136 +293,251 @@ const LoadingSlipPage = () => {
         }
     };
 
-    const generateDeliveryExcelReport = async (usersForRoute, routeName) => {
-        const reportType = 'Delivery Slip';
-        setLoading(true);
-        try {
-            const wb = XLSX.utils.book_new();
-            const deliverySlipData = await createDeliverySlipDataForExcelForRoute(usersForRoute);
-            const ws = XLSX.utils.aoa_to_sheet([
-                [`${reportType}`],
-                [`Route: ${routeName}`],
-                [],
-                deliverySlipData[2],
-                ...deliverySlipData.slice(3)
-            ]);
-            XLSX.utils.book_append_sheet(wb, ws, `${reportType}`);
+const generateDeliveryExcelReport = async (usersForRoute, routeName) => {
+    const reportType = 'Delivery Slip';
+    setLoading(true);
+    try {
+        const wb = XLSX.utils.book_new();
+        const deliverySlipData = await createDeliverySlipDataForExcelForRoute(usersForRoute);
+        
+        // Create worksheet with data
+        const ws = XLSX.utils.aoa_to_sheet(deliverySlipData);
+        
+        // Add styling for column headers (rotate vertically)
+        if (!ws['!cols']) ws['!cols'] = [];
+        
+        // Set column widths
+        ws['!cols'][0] = { wch: 30 }; // First column (Items) width
+        
+        // Set width and rotation for customer name columns
+        for (let i = 1; i < deliverySlipData[3].length; i++) {
+            ws['!cols'][i] = { wch: 10 }; // Set column width
+            
+            // Get cell reference for header (row 3 is headers)
+            const cellRef = XLSX.utils.encode_cell({ r: 3, c: i });
+            
+            // If cell doesn't exist in the sheet, skip
+            if (!ws[cellRef]) continue;
+            
+            // Apply vertical text rotation (90 degrees) and center alignment
+            ws[cellRef].s = {
+                alignment: {
+                    vertical: 'center',
+                    horizontal: 'center',
+                    textRotation: 90 // 90 degrees rotation (vertical text)
+                },
+                font: {
+                    bold: true
+                }
+            };
+        }
+        
+        // Apply similar styling to the "Items" header
+        const itemsHeaderRef = XLSX.utils.encode_cell({ r: 3, c: 0 });
+        if (ws[itemsHeaderRef]) {
+            ws[itemsHeaderRef].s = {
+                alignment: {
+                    vertical: 'center',
+                    horizontal: 'center'
+                },
+                font: {
+                    bold: true
+                }
+            };
+        }
 
-            const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-            const base64Workbook = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+        XLSX.utils.book_append_sheet(wb, ws, `${reportType}`);
 
-            const filename = `${reportType.replace(/\s/g, '')}-Route-${routeName}.xlsx`;
-            const mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        // Rest of the file generation code remains the same...
+        const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+        const base64Workbook = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
 
+        const filename = `${reportType.replace(/\s/g, '')}-Route-${routeName}.xlsx`;
+        const mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+        if (Platform.OS === 'web') {
+            const blob = new Blob([wbout], { type: mimetype });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
             if (Platform.OS === 'web') {
-                const blob = new Blob([wbout], { type: mimetype });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                if (Platform.OS === 'web') {
-                    Alert.alert('Success', `${reportType} Generated Successfully! File downloaded in your browser.`);
-                }
-            } else {
-                const fileDir = FileSystem.documentDirectory;
-                const fileUri = fileDir + filename;
-
-                await FileSystem.writeAsStringAsync(fileUri, base64Workbook, {
-                    encoding: FileSystem.EncodingType.Base64
-                });
-
-                console.log(`${reportType} File written to documentDirectory:`, fileUri);
-
-                if (Platform.OS === 'android') {
-                    save(fileUri, filename, mimetype, reportType);
-                } else {
-                    try {
-                        await Sharing.shareAsync(fileUri, {
-                            mimeType: mimetype,
-                            dialogTitle: `${reportType} Report`,
-                            UTI: 'com.microsoft.excel.xlsx'
-                        });
-                        if (Platform.OS !== 'android') {
-                            Alert.alert('Success', `${reportType} Generated and Shared Successfully!`);
-                        }
-                    } catch (shareError) {
-                        console.error(`${reportType} Sharing Error:`, shareError);
-                        if (Platform.OS === 'android') {
-                            ToastAndroid.show(`Sharing ${reportType} Failed.`, ToastAndroid.SHORT);
-                        } else {
-                            Alert.alert("Sharing Failed", `Error occurred while trying to share the ${reportType.toLowerCase()}.`);
-                        }
-                        setError("Error sharing delivery slip file.");
-                    }
-                }
+                Alert.alert('Success', `${reportType} Generated Successfully! File downloaded in your browser.`);
             }
-        } catch (e) {
-            console.error(`${reportType} Excel Generation Error:`, e);
-            if (Platform.OS === 'android') {
-                ToastAndroid.show(`Failed to generate ${reportType}.`, ToastAndroid.SHORT);
-            } else {
-                Alert.alert("Generation Failed", `Error generating Excel ${reportType.toLowerCase()}.`);
-            }
-            setError("Error generating delivery slip Excel file.");
-        } finally {
-            setLoading(false);
-        }
-    };
+        } else {
+            const fileDir = FileSystem.documentDirectory;
+            const fileUri = fileDir + filename;
 
-    const createDeliverySlipDataForExcelForRoute = async (usersForRoute) => {
-        const orderMap = new Map();
-        const allProducts = new Set();
-        const customerNames = [];
-
-        usersForRoute.forEach(user => {
-            const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
-            if (order) {
-                customerNames.push(user.name);
-                orderMap.set(user.cust_id, { name: user.name, orderId: order.id, products: [], route: user.route });
-            }
-        });
-
-        for (const customerId of orderMap.keys()) {
-            const orderData = orderMap.get(customerId);
-            try {
-                const token = await AsyncStorage.getItem("userAuthToken");
-                const url = `http://${ipAddress}:8090/order-products?orderId=${orderData.orderId}`;
-                const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
-                const productsResponse = await fetch(url, { headers });
-                if (!productsResponse.ok) {
-                    console.error(`Failed to fetch products for order ID ${orderData.orderId}. Status: ${productsResponse.status}`);
-                    continue;
-                }
-                const productsData = await productsResponse.json();
-                orderData.products = productsData;
-                productsData.forEach(product => allProducts.add(product.name));
-            } catch (fetchError) {
-                console.error("Error fetching order products:", fetchError);
-            }
-        }
-
-        const productList = Array.from(allProducts);
-        const excelData = [["Delivery Slip"], [], ["Items", ...customerNames]];
-
-        productList.forEach(productName => {
-            const productRow = [productName];
-            customerNames.forEach(customerName => {
-                let quantity = 0;
-                const customerOrder = orderMap.get(usersForRoute.find(u => u.name === customerName)?.cust_id);
-                if (customerOrder && customerOrder.products) {
-                    const productInOrder = customerOrder.products.find(p => p.name === productName);
-                    quantity = productInOrder ? productInOrder.quantity : 0;
-                }
-                productRow.push(quantity);
+            await FileSystem.writeAsStringAsync(fileUri, base64Workbook, {
+                encoding: FileSystem.EncodingType.Base64
             });
-            excelData.push(productRow);
-        });
-        return excelData;
+
+            console.log(`${reportType} File written to documentDirectory:`, fileUri);
+
+            if (Platform.OS === 'android') {
+                save(fileUri, filename, mimetype, reportType);
+            } else {
+                try {
+                    await Sharing.shareAsync(fileUri, {
+                        mimeType: mimetype,
+                        dialogTitle: `${reportType} Report`,
+                        UTI: 'com.microsoft.excel.xlsx'
+                    });
+                    if (Platform.OS !== 'android') {
+                        Alert.alert('Success', `${reportType} Generated and Shared Successfully!`);
+                    }
+                } catch (shareError) {
+                    console.error(`${reportType} Sharing Error:`, shareError);
+                    if (Platform.OS === 'android') {
+                        ToastAndroid.show(`Sharing ${reportType} Failed.`, ToastAndroid.SHORT);
+                    } else {
+                        Alert.alert("Sharing Failed", `Error occurred while trying to share the ${reportType.toLowerCase()}.`);
+                    }
+                    setError("Error sharing delivery slip file.");
+                }
+            }
+        }
+    } catch (e) {
+        console.error(`${reportType} Excel Generation Error:`, e);
+        if (Platform.OS === 'android') {
+            ToastAndroid.show(`Failed to generate ${reportType}.`, ToastAndroid.SHORT);
+        } else {
+            Alert.alert("Generation Failed", `Error generating Excel ${reportType.toLowerCase()}.`);
+        }
+        setError("Error generating delivery slip Excel file.");
+    } finally {
+        setLoading(false);
+    }
+};
+
+const createDeliverySlipDataForExcelForRoute = async (usersForRoute) => {
+    const orderMap = new Map();
+    const allProducts = new Set();
+    const unitRegex = /(\d+\.?\d*)\s*(ML|LTR|KG|GRMS|G|GM|ML)/i;
+
+    // Process each user's orders
+    usersForRoute.forEach(user => {
+        const order = adminOrders.find(ord => ord.customer_id === user.cust_id && ord.order_type === orderTypeFilter);
+        if (order) {
+            orderMap.set(user.cust_id, { 
+                name: user.name, 
+                orderId: order.id, 
+                products: [], 
+                route: user.route,
+                productCrates: {}
+            });
+        }
+    });
+
+    // Fetch products and calculate crates
+    for (const customerId of orderMap.keys()) {
+        const orderData = orderMap.get(customerId);
+        try {
+            const token = await AsyncStorage.getItem("userAuthToken");
+            const url = `http://${ipAddress}:8090/order-products?orderId=${orderData.orderId}`;
+            const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+            const productsResponse = await fetch(url, { headers });
+            if (!productsResponse.ok) continue;
+            const productsData = await productsResponse.json();
+            
+            productsData.forEach(product => {
+                // Crate calculation logic remains the same
+                const match = product.name.match(unitRegex);
+                let quantityValue = match ? parseFloat(match[1]) : 1;
+                let unit = match ? match[2].toLowerCase() : 'unit';
+                if (unit === 'grms' || unit === 'g' || unit === 'gm') unit = 'gm';
+                else if (unit === 'ltr') unit = 'ltr';
+                else if (unit === 'kg') unit = 'kg';
+                else if (unit === 'ml') unit = 'ml';
+
+                let baseUnitQuantity = 0;
+                if (unit === 'ml') baseUnitQuantity = (quantityValue * product.quantity) / 1000;
+                else if (unit === 'gm') baseUnitQuantity = (quantityValue * product.quantity) / 1000;
+                else if (unit === 'ltr') baseUnitQuantity = quantityValue * product.quantity;
+                else if (unit === 'kg') baseUnitQuantity = quantityValue * product.quantity;
+                else baseUnitQuantity = product.quantity;
+
+                const crates = Math.floor(baseUnitQuantity / 12);
+                
+                orderData.products.push(product);
+                orderData.productCrates[product.name] = crates;
+                allProducts.add(product.name);
+            });
+        } catch (fetchError) {
+            console.error("Error fetching order products:", fetchError);
+        }
+    }
+
+    const productList = Array.from(allProducts);
+    
+    const formatVerticalHeader = (text) => {
+        // Split into words (preserving the space between first/last name)
+        const words = text.split(' ');
+        
+        // Process each word to join letters with newlines
+        // Add double newline between words to create visual space
+        return words.map(word => word.split('').join('\n')).join('\n \n');
     };
+
+    // Prepare Excel data with vertical headers
+    const excelData = [
+        ["Delivery Slip"], 
+        [`Route: ${usersForRoute[0]?.route || ''}`],
+        [], // Empty row for spacing
+        ["Items", ...usersForRoute.map(u => formatVerticalHeader(u.name)), formatVerticalHeader("Total Crates")]
+    ];
+
+    // Add product rows with quantities and crate calculations
+    productList.forEach(productName => {
+        const productRow = [productName];
+        let totalCratesForProduct = 0;
+        
+        usersForRoute.forEach(user => {
+            const orderData = orderMap.get(user.cust_id);
+            const quantity = orderData?.products?.find(p => p.name === productName)?.quantity || 0;
+            productRow.push(quantity);
+            
+            // Add to crate total
+            totalCratesForProduct += orderData?.productCrates[productName] || 0;
+        });
+        
+        productRow.push(totalCratesForProduct);
+        excelData.push(productRow);
+    });
+
+    // Add totals row
+    const totalsRow = ["Totals"];
+    let grandTotalQuantity = 0;
+    let grandTotalCrates = 0;
+    
+    usersForRoute.forEach(user => {
+        const orderData = orderMap.get(user.cust_id);
+        const customerTotal = orderData?.products?.reduce((sum, product) => sum + product.quantity, 0) || 0;
+        totalsRow.push(customerTotal);
+        grandTotalQuantity += customerTotal;
+    });
+    
+    grandTotalCrates = usersForRoute.reduce((total, user) => {
+        const orderData = orderMap.get(user.cust_id);
+        return total + Object.values(orderData?.productCrates || {}).reduce((sum, crates) => sum + crates, 0);
+    }, 0);
+    
+
+ 
+   
+
+    totalsRow.push(grandTotalCrates);
+    excelData.push(totalsRow);
+
+    const customerIdRow = ["Customer ID", ...usersForRoute.map(u => u.cust_id || ""), ""];
+    excelData.push(customerIdRow);
+
+    return excelData;
+};
 
     const createLoadingSlipDataForExcelForRoute = async (usersForRoute) => {
         const consolidatedProducts = new Map();

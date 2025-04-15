@@ -123,7 +123,7 @@ router.get("/get-orders/:customer_id", async (req, res) => {
             return res.status(400).json({ status: false, message: "Customer ID is required" });
         }
 
-        const fetchQuery = "SELECT id,total_amount,customer_id,delivery_status,approve_status,cancelled,placed_on,loading_slip FROM orders WHERE customer_id = ? ORDER BY id DESC";
+        const fetchQuery = "SELECT id,total_amount,customer_id,delivery_status,approve_status,cancelled,placed_on,loading_slip,order_type FROM orders WHERE customer_id = ? ORDER BY id DESC";
         const fetchResult = await executeQuery(fetchQuery, [customer_id]);
 
         if (fetchResult.length > 0) {
@@ -654,6 +654,8 @@ router.post("/add-product-to-order", async (req, res) => {
         res.status(500).json({ success: false, message: "Internal Server Error", error: error });
     }
 });
+
+
 router.post("/on-behalf", async (req, res) => {
     try {
         const { customer_id, order_type, reference_order_id } = req.body;
@@ -664,7 +666,29 @@ router.post("/on-behalf", async (req, res) => {
             });
         }
 
-        // 0. Check if auto order is enabled for the user and order type
+        // Validate order_type is exactly 'AM' or 'PM'
+        if (order_type !== 'AM' && order_type !== 'PM') {
+            return res.status(400).json({ message: "Invalid order_type. Must be 'AM' or 'PM'." });
+        }
+
+        // 0. Check if an order already exists for the customer and order_type today
+        const checkExistingOrderQuery = `
+            SELECT id
+            FROM orders
+            WHERE customer_id = ?
+            AND order_type = ?
+            AND DATE(FROM_UNIXTIME(placed_on)) = CURDATE()
+            LIMIT 1
+        `;
+        const existingOrderResult = await executeQuery(checkExistingOrderQuery, [customer_id, order_type]);
+
+        if (existingOrderResult && existingOrderResult.length > 0) {
+            return res.status(400).json({
+                message: `Order already placed for ${order_type} today.`
+            });
+        }
+
+        // 1. Check if auto order is enabled for the user and order type
         const checkAutoOrderQuery = `
             SELECT auto_am_order, auto_pm_order
             FROM users
@@ -677,34 +701,56 @@ router.post("/on-behalf", async (req, res) => {
         }
 
         const user = userCheckResult[0];
-        let shouldProceed = false;
 
-        if (order_type.toLowerCase() === 'am') {
+        if (order_type === 'AM') {
             if (user.auto_am_order && user.auto_am_order.toLowerCase() === 'yes') {
-                shouldProceed = true;
+                // Proceed
             } else {
                 return res.status(400).json({ message: "Automatic AM order placement is disabled for this customer." });
             }
-        } else if (order_type.toLowerCase() === 'pm') {
+        } else if (order_type === 'PM') {
             if (user.auto_pm_order && user.auto_pm_order.toLowerCase() === 'yes') {
-                shouldProceed = true;
+                // Proceed
             } else {
                 return res.status(400).json({ message: "Automatic PM order placement is disabled for this customer." });
             }
-        } else {
-            return res.status(400).json({ message: "Invalid order_type. Must be 'am' or 'pm'." });
         }
 
-        if (!shouldProceed) {
-            // This condition should ideally be caught in the 'else' blocks above,
-            // but it's added here as a safeguard.
-            return;
+        // 2. Validate reference_order_id exists and has products
+        const checkReferenceOrderQuery = `
+            SELECT id
+            FROM orders
+            WHERE id = ?
+        `;
+        const referenceOrderResult = await executeQuery(checkReferenceOrderQuery, [reference_order_id]);
+
+        if (!referenceOrderResult || referenceOrderResult.length === 0) {
+            return res.status(400).json({ message: `Reference order ID ${reference_order_id} does not exist.` });
         }
 
-        // 1. Place Admin Order and get new_order_id
+        const checkReferenceProductsQuery = `
+            SELECT product_id, quantity, price, name, category
+            FROM order_products
+            WHERE order_id = ?
+            AND LOWER(category) NOT LIKE '%others%'
+            AND LOWER(category) NOT LIKE '%paneer%'
+            AND LOWER(category) NOT LIKE '%ghee%'
+            AND LOWER(category) NOT LIKE '%butter%'
+            AND LOWER(category) NOT LIKE '%butter milk%'
+        `;
+        const referenceProducts = await executeQuery(checkReferenceProductsQuery, [reference_order_id]);
+        console.log(`Reference order ${reference_order_id} products for ${order_type}:`, referenceProducts);
+
+        if (!referenceProducts || referenceProducts.length === 0) {
+            return res.status(400).json({
+                message: `No eligible products found in reference order ${reference_order_id} for ${order_type} order.`
+            });
+        }
+
+        // 3. Place Admin Order and get new_order_id
         const insertOrderQuery = `
             INSERT INTO orders (customer_id, total_amount, order_type, placed_on, created_at, updated_at)
-            VALUES (?, 0.0, ?, UNIX_TIMESTAMP(), UNIX_TIMESTAMP(), UNIX_TIMESTAMP());
+            VALUES (?, 0.0, ?, UNIX_TIMESTAMP(), UNIX_TIMESTAMP(), UNIX_TIMESTAMP())
         `;
         const orderValues = [customer_id, order_type];
         const insertOrderResult = await executeQuery(insertOrderQuery, orderValues);
@@ -714,26 +760,27 @@ router.post("/on-behalf", async (req, res) => {
             return res.status(500).json({ message: "Failed to create new order." });
         }
 
-        // 2. Insert Order Products from reference order
+        // 4. Insert Order Products from reference order
         const insertOrderProductsQuery = `
-        INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
-        SELECT ?, product_id, quantity, price, name, category
-        FROM order_products
-        WHERE order_id = ?
-        AND LOWER(category) NOT LIKE '%Others%'
-        AND LOWER(category) NOT LIKE '%paneer%'
-        AND LOWER(category) NOT LIKE '%ghee%'
-        AND LOWER(category) NOT LIKE '%butter%'
-        AND LOWER(category) NOT LIKE '%butter milk%'
+            INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
+            SELECT ?, product_id, quantity, price, name, category
+            FROM order_products
+            WHERE order_id = ?
+            AND LOWER(category) NOT LIKE '%others%'
+            AND LOWER(category) NOT LIKE '%paneer%'
+            AND LOWER(category) NOT LIKE '%ghee%'
+            AND LOWER(category) NOT LIKE '%butter%'
+            AND LOWER(category) NOT LIKE '%butter milk%'
         `;
         const orderProductsValues = [newOrderId, reference_order_id];
-        await executeQuery(insertOrderProductsQuery, orderProductsValues);
+        const insertProductsResult = await executeQuery(insertOrderProductsQuery, orderProductsValues);
+        console.log(`Inserted ${insertProductsResult.affectedRows} products for order ${newOrderId}`);
 
-        // 3. Update total_amount in orders table
+        // 5. Update total_amount in orders table
         const updateOrderTotalQuery = `
             UPDATE orders
             SET total_amount = (
-                SELECT SUM(quantity * price)
+                SELECT COALESCE(SUM(quantity * price), 0)
                 FROM order_products
                 WHERE order_id = ?
             )
@@ -742,9 +789,29 @@ router.post("/on-behalf", async (req, res) => {
         const updateTotalValues = [newOrderId, newOrderId];
         await executeQuery(updateOrderTotalQuery, updateTotalValues);
 
+        // 6. Verify the order has products
+        const verifyOrderProductsQuery = `
+            SELECT COUNT(*) as product_count
+            FROM order_products
+            WHERE order_id = ?
+        `;
+        const verifyResult = await executeQuery(verifyOrderProductsQuery, [newOrderId]);
+        const productCount = verifyResult[0].product_count;
+        console.log(`Order ${newOrderId} has ${productCount} products`);
+
+        if (productCount === 0) {
+            // Optionally, delete the order if no products were added
+            const deleteOrderQuery = `DELETE FROM orders WHERE id = ?`;
+            await executeQuery(deleteOrderQuery, [newOrderId]);
+            return res.status(400).json({
+                message: `No products were added to ${order_type} order. Order creation cancelled.`
+            });
+        }
+
         return res.status(201).json({
             message: "Admin order placed successfully with products copied.",
-            new_order_id: newOrderId
+            new_order_id: newOrderId,
+            product_count: productCount
         });
 
     } catch (error) {
@@ -2053,6 +2120,71 @@ router.post("/global-price-update", async (req, res) => {
     } catch (error) {
         console.error("Error in global price update:", error);
         return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+router.get("/fetch-total-paid", async (req, res) => {
+    try {
+        const customerId = req.query.customer_id;
+        const month = req.query.month; // YYYY-MM format
+
+        if (!customerId || !month) {
+            return res.status(400).json({ message: "Customer ID and month are required" });
+        }
+
+        // Query to calculate total paid amount for the month
+        const query = `
+            SELECT SUM(payment_amount) as total_paid 
+            FROM payment_transactions 
+            WHERE customer_id = ? 
+            AND DATE_FORMAT(payment_date, '%Y-%m') = ?
+        `;
+        const params = [customerId, month];
+
+        const result = await executeQuery(query, params);
+
+        const totalPaid = result[0]?.total_paid || 0;
+
+        return res.status(200).json({
+            message: "Total paid amount fetched successfully",
+            total_paid: totalPaid
+        });
+    } catch (error) {
+        console.error("Error fetching total paid amount:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+});
+
+
+router.get("/fetch-total-paid-by-day", async (req, res) => {
+    try {
+        const customerId = req.query.customer_id;
+        const date = req.query.date; // YYYY-MM-DD format
+
+        if (!customerId || !date) {
+            return res.status(400).json({ message: "Customer ID and date are required" });
+        }
+
+        // Query to calculate total paid amount for the specific day
+        const query = `
+            SELECT SUM(payment_amount) as total_paid 
+            FROM payment_transactions 
+            WHERE customer_id = ? 
+            AND DATE(payment_date) = ?
+        `;
+        const params = [customerId, date];
+
+        const result = await executeQuery(query, params);
+
+        const totalPaid = result[0]?.total_paid || 0;
+
+        return res.status(200).json({
+            message: "Total paid amount for the day fetched successfully",
+            total_paid: totalPaid
+        });
+    } catch (error) {
+        console.error("Error fetching total paid by day:", error);
+        return res.status(500).json({ message: "Internal server error", error: error.message });
     }
 });
 module.exports = router;

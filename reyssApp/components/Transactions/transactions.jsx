@@ -1,244 +1,433 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+    StyleSheet,
+    View,
+    Text,
+    ScrollView,
+    ActivityIndicator,
+    Alert,
+    TouchableOpacity,
+    SectionList,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
-import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { ipAddress } from '../../urls';
+import moment from 'moment';
+import axios from 'axios';
 
 const TransactionsPage = () => {
-    const [transactions, setTransactions] = useState([]);
+    const [allOrders, setAllOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [selectedDate, setSelectedDate] = useState(null); // For date filter
-    const [isDatePickerVisible, setDatePickerVisibility] = useState(false); // Date picker modal visibility
-    const [paymentFilter, setPaymentFilter] = useState('All'); // Filter: All, Cash, Online
+    const [selectedMonth, setSelectedMonth] = useState(moment().format('YYYY-MM'));
+    const [totalOrderAmount, setTotalOrderAmount] = useState(0);
+    const [totalPaidAmount, setTotalPaidAmount] = useState(0);
+    const [expandedOrder, setExpandedOrder] = useState(null);
+    const [expandedOrderProducts, setExpandedOrderProducts] = useState([]);
+    const [showInvoice, setShowInvoice] = useState(null);
+    const [dailyPaidAmounts, setDailyPaidAmounts] = useState({}); // Store daily paid amounts
 
-    // Fetch customer_id and payment transactions
-    const fetchTransactions = async () => {
+    // Fetch all orders
+    const fetchOrders = async () => {
         try {
-            // Get customer_id from JWT token
+            setLoading(true);
             const token = await AsyncStorage.getItem("userAuthToken");
-            if (!token) {
-                throw new Error("Authentication token not found");
-            }
+            if (!token) throw new Error("Authentication token not found");
+
             const decoded = jwtDecode(token);
-            const fetchedCustomerId = decoded.id;
-            console.log("Fetched Customer ID:", fetchedCustomerId);
+            const customerId = decoded.id;
 
-            // Build query params
-            let url = `http://${ipAddress}:8090/fetch-payment-transactions?customer_id=${fetchedCustomerId}`;
-            if (selectedDate) {
-                const formattedDate = selectedDate.toISOString().split('T')[0]; // YYYY-MM-DD
-                url += `&date=${formattedDate}`;
-            }
-            if (paymentFilter !== 'All') {
-                url += `&payment_method=${paymentFilter.toLowerCase()}`;
-            }
-
-            // Fetch transactions from API
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
+            const response = await fetch(
+                `http://${ipAddress}:8090/get-orders/${customerId}`,
+                { headers: { 'Authorization': `Bearer ${token}` } }
+            );
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
 
             const data = await response.json();
-            console.log("Transactions fetched:", data.transactions);
-            setTransactions(data.transactions);
+            setAllOrders(data.orders || []);
+            calculateMonthlyOrderData(data.orders || [], selectedMonth);
+            fetchTotalPaid(customerId, selectedMonth);
+            fetchAllDailyPaidAmounts(customerId, selectedMonth); // Fetch daily paid amounts
             setError(null);
         } catch (err) {
-            console.error("Error fetching transactions:", err);
+            console.error("Error fetching orders:", err);
             setError(err.message);
-            setTransactions([]);
-            Alert.alert("Error", `Failed to load transactions: ${err.message}`);
+            setAllOrders([]);
+            Alert.alert("Error", `Failed to load orders: ${err.message}`);
         } finally {
             setLoading(false);
         }
     };
 
-    // Fetch data when component mounts or filters change
-    useEffect(() => {
-        fetchTransactions();
-    }, [selectedDate, paymentFilter]);
-
-    // Date picker handlers
-    const showDatePicker = () => {
-        setDatePickerVisibility(true);
+    // Fetch total paid amount for the month
+    const fetchTotalPaid = async (customerId, month) => {
+        try {
+            const token = await AsyncStorage.getItem("userAuthToken");
+            const response = await axios.get(
+                `http://${ipAddress}:8090/fetch-total-paid`,
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                    params: { customer_id: customerId, month }
+                }
+            );
+            setTotalPaidAmount(response.data.total_paid || 0);
+        } catch (err) {
+            console.error("Error fetching total paid:", err);
+            setTotalPaidAmount(0);
+            Alert.alert("Error", `Failed to load total paid: ${err.message}`);
+        }
     };
 
-    const hideDatePicker = () => {
-        setDatePickerVisibility(false);
+    // Fetch total paid amount for all days in the month
+    const fetchAllDailyPaidAmounts = async (customerId, month) => {
+        try {
+            const token = await AsyncStorage.getItem("userAuthToken");
+            const daysInMonth = moment(month).daysInMonth();
+            const dailyAmounts = {};
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = moment(month).date(day).format('YYYY-MM-DD');
+                const response = await axios.get(
+                    `http://${ipAddress}:8090/fetch-total-paid-by-day`,
+                    {
+                        headers: { Authorization: `Bearer ${token}` },
+                        params: { customer_id: customerId, date }
+                    }
+                );
+                const totalPaid = response.data.total_paid || 0;
+                if (totalPaid > 0) {
+                    dailyAmounts[date] = totalPaid;
+                }
+            }
+
+            setDailyPaidAmounts(dailyAmounts);
+        } catch (err) {
+            console.error("Error fetching daily paid amounts:", err);
+            setDailyPaidAmounts({});
+            Alert.alert("Error", `Failed to load daily paid amounts: ${err.message}`);
+        }
     };
 
-    const handleConfirmDate = (date) => {
-        setSelectedDate(date);
-        hideDatePicker();
+    // Calculate monthly order totals
+    const calculateMonthlyOrderData = (orders, month) => {
+        const filtered = orders.filter(order =>
+            moment.unix(order.placed_on).format('YYYY-MM') === month
+        );
+        const totalAmount = filtered.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
+        setTotalOrderAmount(totalAmount);
     };
 
-    // Payment method filter handler
-    const togglePaymentFilter = () => {
-        setPaymentFilter(prev => {
-            if (prev === 'All') return 'Cash';
-            if (prev === 'Cash') return 'Online';
-            return 'All';
+    // Group orders by date
+    const getGroupedOrders = () => {
+        const filtered = allOrders.filter(order =>
+            moment.unix(order.placed_on).format('YYYY-MM') === selectedMonth
+        );
+
+        const grouped = filtered.reduce((acc, order) => {
+            const date = moment.unix(order.placed_on).format('YYYY-MM-DD');
+            if (!acc[date]) acc[date] = [];
+            acc[date].push(order);
+            return acc;
+        }, {});
+
+        return Object.keys(grouped).map(date => ({
+            title: date,
+            data: grouped[date]
+        })).sort((a, b) => new Date(b.title) - new Date(a.title));
+    };
+
+    // Handle month change
+    const changeMonth = async (increment) => {
+        const newMonth = moment(selectedMonth).add(increment, 'months').format('YYYY-MM');
+        setSelectedMonth(newMonth);
+        calculateMonthlyOrderData(allOrders, newMonth);
+        
+        const token = await AsyncStorage.getItem("userAuthToken");
+        const decoded = jwtDecode(token);
+        fetchTotalPaid(decoded.id, newMonth);
+        fetchAllDailyPaidAmounts(decoded.id, newMonth);
+    };
+
+    // Format currency
+    const formatCurrency = (amount) => {
+        return '₹' + parseFloat(amount).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+    };
+
+    // Format date
+    const formatDate = (timestamp) => {
+        return moment.unix(timestamp).format('MMM D,');
+    };
+
+    // Fetch Order Products
+    const fetchOrderProducts = useCallback(async (orderId) => {
+        try {
+            const token = await AsyncStorage.getItem("userAuthToken");
+            const response = await axios.get(
+                `http://${ipAddress}:8090/order-products?orderId=${orderId}`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching order products:", error);
+            Alert.alert("Error", "Failed to fetch order details.");
+            return [];
+        }
+    }, []);
+
+    const calculateInvoiceDetails = useCallback((products) => {
+        return products.map((op, index) => {
+            const priceIncludingGst = parseFloat(op.price);
+            const gstRate = parseFloat(op.gst_rate || 0);
+            const basePrice = gstRate > 0 ? priceIncludingGst / (1 + (gstRate / 100)) : priceIncludingGst;
+            const value = basePrice * op.quantity;
+            const gstAmount = priceIncludingGst - basePrice;
+            return {
+                serialNumber: index + 1,
+                name: op.name,
+                quantity: op.quantity,
+                rate: basePrice.toFixed(2),
+                value: value.toFixed(2),
+                gstRate: gstRate.toFixed(2),
+                gstAmount: (gstAmount * op.quantity).toFixed(2),
+                priceIncludingGst: priceIncludingGst.toFixed(2),
+            };
         });
+    }, []);
+
+    const handleOrderPress = async (orderId) => {
+        if (showInvoice === orderId) {
+            setShowInvoice(null);
+            setExpandedOrderProducts([]);
+        } else {
+            setShowInvoice(orderId);
+            setExpandedOrder(orderId);
+            const productsData = await fetchOrderProducts(orderId);
+            setExpandedOrderProducts(productsData);
+        }
     };
+
+    useEffect(() => {
+        fetchOrders();
+    }, []);
+
+    const groupedOrders = getGroupedOrders();
 
     return (
         <ScrollView style={styles.container}>
-            {/* Header with Date Picker and Filter */}
-            <View style={styles.headerContainer}>
-                <TouchableOpacity onPress={showDatePicker} style={styles.datePickerButton}>
-                    <Text style={styles.datePickerText}>
-                        {selectedDate ? selectedDate.toLocaleDateString() : 'Select Date'}
-                    </Text>
+            {/* Month Selector */}
+            <View style={styles.monthSelector}>
+                <TouchableOpacity onPress={() => changeMonth(-1)}>
+                    <Text style={styles.monthArrow}>‹</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={togglePaymentFilter} style={styles.filterButton}>
-                    <Text style={styles.filterText}>{paymentFilter}</Text>
+                <Text style={styles.monthText}>
+                    {moment(selectedMonth).format('MMMM YYYY')}
+                </Text>
+                <TouchableOpacity onPress={() => changeMonth(1)}>
+                    <Text style={styles.monthArrow}>›</Text>
                 </TouchableOpacity>
             </View>
 
-            {/* Date Picker Modal */}
-            <DateTimePickerModal
-                isVisible={isDatePickerVisible}
-                mode="date"
-                onConfirm={handleConfirmDate}
-                onCancel={hideDatePicker}
-            />
-
-            <Text style={styles.headerText}>Your Payment Transactions</Text>
+            {/* Balance Summary */}
+            <View style={styles.summaryContainer}>
+                <View style={styles.summaryRow}>
+                    <Text style={styles.balanceText}>Total Invoice: {formatCurrency(totalOrderAmount)}</Text>
+                    <Text style={styles.balanceText}>Total Paid: {formatCurrency(totalPaidAmount)}</Text>
+                </View>
+            </View>
 
             {loading ? (
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color="#007bff" />
-                    <Text style={styles.loadingText}>Loading transactions...</Text>
+                    <Text style={styles.loadingText}>Loading...</Text>
                 </View>
             ) : error ? (
                 <Text style={styles.errorText}>{error}</Text>
-            ) : transactions.length === 0 ? (
-                <Text style={styles.noDataText}>No transactions found.</Text>
+            ) : groupedOrders.length === 0 ? (
+                <Text style={styles.noDataText}>No orders found for this month.</Text>
             ) : (
-                <View style={styles.tableContainer}>
-                    {/* Table Header */}
-                    <View style={styles.tableRow}>
-                        <Text style={styles.tableHeader}>Trans. ID</Text>
-                        <Text style={styles.tableHeader}>Cust. ID</Text>
-                        <Text style={styles.tableHeader}>Method</Text>
-                        <Text style={styles.tableHeader}>Amount</Text>
-                        <Text style={styles.tableHeader}>Date</Text>
-                    </View>
-                    {/* Table Rows */}
-                    {transactions.map((transaction, index) => (
-                        <View key={index} style={styles.tableRow}>
-                            <Text style={styles.tableCell}>{transaction.transaction_id}</Text>
-                            <Text style={styles.tableCell}>{transaction.customer_id}</Text>
-                            <Text style={styles.tableCell}>{transaction.payment_method}</Text>
-                            <Text style={styles.tableCell}>₹{parseFloat(transaction.payment_amount).toFixed(2)}</Text>
-                            <Text style={styles.tableCell}>
-                                {new Date(transaction.payment_date).toLocaleDateString()}
-                            </Text>
+                <SectionList
+                    sections={groupedOrders}
+                    keyExtractor={(item) => item.id.toString()}
+                    renderItem={({ item }) => {
+                        const date = moment.unix(item.placed_on).format('YYYY-MM-DD');
+                        const dateOrders = groupedOrders.find(g => g.title === date).data;
+                        const dateTotalOrderAmount = dateOrders.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
+                        const dateTotalPaid = dailyPaidAmounts[date] || 0;
+
+                        return (
+                            <TouchableOpacity
+                                style={styles.orderItem}
+                                onPress={() => handleOrderPress(item.id)}
+                            >
+                                <View style={styles.orderHeader}>
+                                    <Text style={styles.orderDate}>
+                                        {formatDate(item.placed_on)} Total Paid: {formatCurrency(dateTotalPaid)}
+                                    </Text>
+                                    <Text style={styles.orderAmount}>Total Orders: {formatCurrency(dateTotalOrderAmount)}</Text>
+                                </View>
+                                {/* Display total paid for the day below the header */}
+                                {dateTotalPaid > 0 && (
+                                    <View style={styles.dailyPaidContainer}>
+                                        <Text style={styles.dailyPaidText}>
+                                            Total Paid for {moment(date).format('MMMM D, YYYY')}: {formatCurrency(dateTotalPaid)}
+                                        </Text>
+                                    </View>
+                                )}
+                                {showInvoice === item.id && expandedOrderProducts.length > 0 ? (
+                                    <View style={styles.invoiceContainer}>
+                                        <Text style={styles.invoiceTitle}>Order Products</Text>
+                                        <View style={styles.invoiceTableHeader}>
+                                            <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Name</Text>
+                                            <Text style={[styles.tableHeaderCell, { flex: 0.5, textAlign: 'right' }]}>Qty</Text>
+                                            <Text style={[styles.tableHeaderCell, { flex: 0.7, textAlign: 'right' }]}>Rate</Text>
+                                            <Text style={[styles.tableHeaderCell, { flex: 0.6, textAlign: 'right' }]}>GST %</Text>
+                                            <Text style={[styles.tableHeaderCell, { flex: 0.8, textAlign: 'right' }]}>GST Amt</Text>
+                                            <Text style={[styles.tableHeaderCell, { flex: 0.7, textAlign: 'right' }]}>Value</Text>
+                                        </View>
+                                        {calculateInvoiceDetails(expandedOrderProducts).map(product => (
+                                            <View key={product.serialNumber} style={styles.invoiceTableRow}>
+                                                <Text style={[styles.tableCell, { flex: 1 }]}>{product.name}</Text>
+                                                <Text style={[styles.tableCell, { flex: 0.5, textAlign: 'right' }]}>{product.quantity}</Text>
+                                                <Text style={[styles.tableCell, { flex: 0.7, textAlign: 'right' }]}>{product.rate}</Text>
+                                                <Text style={[styles.tableCell, { flex: 0.6, textAlign: 'right' }]}>{product.gstRate}</Text>
+                                                <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'right' }]}>{formatCurrency(product.gstAmount)}</Text>
+                                                <Text style={[styles.tableCell, { flex: 0.7, textAlign: 'right' }]}>{formatCurrency(product.value)}</Text>
+                                            </View>
+                                        ))}
+                                        <View style={styles.invoiceTotalRow}>
+                                            <Text style={{ fontWeight: 'bold', flex: 3.9, textAlign: 'right', paddingRight: 10 }}>Total (Excl. GST):</Text>
+                                            <Text style={{ fontWeight: 'bold', flex: 0.8, textAlign: 'right' }}>{formatCurrency(expandedOrderProducts.reduce((sum, item) => sum + (parseFloat(item.price) / (1 + (parseFloat(item.gst_rate || 0) / 100))) * item.quantity, 0))}</Text>
+                                        </View>
+                                        {expandedOrderProducts.length > 0 && (
+                                            <View>
+                                                {(() => {
+                                                    const totalGst = expandedOrderProducts.reduce((sum, item) => {
+                                                        const price = parseFloat(item.price);
+                                                        const gstRate = parseFloat(item.gst_rate || 0);
+                                                        const basePrice = price / (1 + (gstRate / 100));
+                                                        const gstAmount = price - basePrice;
+                                                        return sum + (gstAmount * item.quantity);
+                                                    }, 0);
+                                                    const cgst = totalGst / 2;
+                                                    const sgst = totalGst / 2;
+                                                    return (
+                                                        <View>
+                                                            <View style={styles.invoiceTotalRow}>
+                                                                <Text style={{ fontWeight: 'bold', flex: 3.9, textAlign: 'right', paddingRight: 10 }}>Total GST Amount:</Text>
+                                                                <Text style={{ fontWeight: 'bold', flex: 0.8, textAlign: 'right' }}>{formatCurrency(totalGst)}</Text>
+                                                            </View>
+                                                            <View style={styles.invoiceTotalRow}>
+                                                                <Text style={{ fontWeight: 'bold', flex: 3.9, textAlign: 'right', paddingRight: 10 }}>CGST:</Text>
+                                                                <Text style={{ fontWeight: 'bold', flex: 0.8, textAlign: 'right' }}>{formatCurrency(cgst)}</Text>
+                                                            </View>
+                                                            <View style={styles.invoiceTotalRow}>
+                                                                <Text style={{ fontWeight: 'bold', flex: 3.9, textAlign: 'right', paddingRight: 10 }}>SGST:</Text>
+                                                                <Text style={{ fontWeight: 'bold', flex: 0.8, textAlign: 'right' }}>{formatCurrency(sgst)}</Text>
+                                                            </View>
+                                                            <View style={styles.invoiceTotalRow}>
+                                                                <Text style={{ fontWeight: 'bold', flex: 3.9, textAlign: 'right', paddingRight: 10 }}>Grand Total:</Text>
+                                                                <Text style={{ fontWeight: 'bold', flex: 0.8, textAlign: 'right' }}>{formatCurrency(item.total_amount)}</Text>
+                                                            </View>
+                                                        </View>
+                                                    );
+                                                })()}
+                                            </View>
+                                        )}
+                                    </View>
+                                ) : showInvoice === item.id ? (
+                                    <Text style={{ marginTop: 10 }}>Loading order products...</Text>
+                                ) : null}
+                            </TouchableOpacity>
+                        );
+                    }}
+                    renderSectionHeader={({ section: { title } }) => (
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionHeaderText}>{formatDate(moment(title, 'YYYY-MM-DD').unix())}</Text>
                         </View>
-                    ))}
-                </View>
+                    )}
+                />
             )}
         </ScrollView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#f0f0f0',
-        padding: 20,
-    },
-    headerContainer: {
+    container: { flex: 1, backgroundColor: '#f8f9fa', padding: 15 },
+    monthSelector: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 20,
-    },
-    datePickerButton: {
-        backgroundColor: '#007bff',
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 5,
-    },
-    datePickerText: {
-        color: '#fff',
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    filterButton: {
-        backgroundColor: '#28a745',
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 5,
-    },
-    filterText: {
-        color: '#fff',
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    headerText: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#333',
-        textAlign: 'center',
-        marginBottom: 20,
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
         alignItems: 'center',
-        padding: 20,
+        marginBottom: 20,
+        paddingHorizontal: 20,
     },
-    loadingText: {
-        marginTop: 10,
-        fontSize: 16,
-        color: '#6c757d',
-    },
-    errorText: {
-        fontSize: 16,
-        color: 'red',
-        textAlign: 'center',
-        marginTop: 20,
-    },
-    noDataText: {
-        fontSize: 16,
-        color: '#666',
-        textAlign: 'center',
-        marginTop: 20,
-    },
-    tableContainer: {
+    monthArrow: { fontSize: 30, color: '#007bff' },
+    monthText: { fontSize: 18, fontWeight: 'bold' },
+    summaryContainer: {
         backgroundColor: '#fff',
         borderRadius: 8,
-        padding: 10,
+        padding: 15,
+        marginBottom: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
     },
-    tableRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 8,
+    summaryRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    balanceText: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#28a745' },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+    loadingText: { marginTop: 10, fontSize: 16, color: '#6c757d' },
+    errorText: { fontSize: 16, color: 'red', textAlign: 'center', marginTop: 20 },
+    noDataText: { fontSize: 16, color: '#666', textAlign: 'center', marginTop: 20 },
+    sectionHeader: {
+        backgroundColor: '#e9ecef',
+        padding: 8,
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: '#dee2e6',
     },
-    tableHeader: {
-        flex: 1,
-        fontSize: 14,
-        fontWeight: 'bold',
-        color: '#333',
-        textAlign: 'center',
+    sectionHeaderText: { fontWeight: 'bold' },
+    orderItem: {
+        backgroundColor: '#fff',
+        padding: 15,
+        marginBottom: 8,
+        borderRadius: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 1,
     },
-    tableCell: {
-        flex: 1,
-        fontSize: 14,
-        color: '#666',
-        textAlign: 'center',
+    orderHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+    orderDate: { fontWeight: '500' },
+    orderAmount: { fontWeight: 'bold', color: '#28a745' },
+    dailyPaidContainer: { paddingTop: 5 },
+    dailyPaidText: { fontSize: 14, color: '#28a745' },
+    invoiceContainer: {
+        marginTop: 10,
+        padding: 10,
+        borderColor: '#ddd',
+        borderWidth: 1,
+        borderRadius: 5,
     },
+    invoiceTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
+    invoiceTableHeader: {
+        flexDirection: 'row',
+        borderBottomWidth: 1,
+        paddingBottom: 8,
+        marginBottom: 5,
+    },
+    tableHeaderCell: { fontWeight: 'bold', fontSize: 12 },
+    invoiceTableRow: {
+        flexDirection: 'row',
+        paddingVertical: 5,
+        borderBottomWidth: 1,
+        borderColor: '#eee',
+    },
+    tableCell: { fontSize: 12 },
+    invoiceTotalRow: { flexDirection: 'row', marginTop: 5, paddingVertical: 3 },
 });
 
 export default TransactionsPage;

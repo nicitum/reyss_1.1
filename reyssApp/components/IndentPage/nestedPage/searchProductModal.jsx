@@ -217,7 +217,7 @@ const SearchProductModal = ({ isVisible, onClose, onAddProduct, currentCustomerI
                                 <View style={styles.productInfo}>
                                     <Text style={styles.productName}>{item.name}</Text>
                                     <Text style={styles.productDetails}>
-                                        {item.category} | {item.brand} |
+                                        {item.category} | {item.brand} | {item.gst_rate}% GST  
                                         <Text style={styles.price}> ₹{item.finalPrice ? item.finalPrice.toFixed(2) : 'N/A'}</Text>
                                     </Text>
                                 </View>

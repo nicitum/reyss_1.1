@@ -32,6 +32,7 @@ const OrderCard = ({ shift, order, selectedDate, onOrderClick }) => {
           </Text>
           {order ? (
             <>
+              <Text style={styles.orderText}>Order ID: {order.orderId}</Text>
               <Text style={styles.orderText}>Quantity: {order.quantity}</Text>
               <Text style={styles.orderText}>
                 Total Amount: ₹{order.totalAmount}
