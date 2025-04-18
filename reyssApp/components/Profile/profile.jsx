@@ -81,16 +81,7 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                             </View>
                             <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
                         </TouchableOpacity>
-                        <TouchableOpacity
-                            style={styles.menuItem}
-                            onPress={() => navigation.navigate("AdminAssignedUsersPage")}
-                        >
-                            <View style={styles.menuIconText}>
-                                <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
-                                <Text style={styles.menuText}>Admin Orders</Text>
-                            </View>
-                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
-                        </TouchableOpacity>
+                       
                         <TouchableOpacity
                             style={styles.menuItem}
                             onPress={() => navigation.navigate("PlaceOrderAdmin")}
@@ -111,16 +102,7 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                             </View>
                             <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
                         </TouchableOpacity>
-                        <TouchableOpacity
-                            style={styles.menuItem}
-                            onPress={() => navigation.navigate("Invoice")}
-                        >
-                            <View style={styles.menuIconText}>
-                                <MaterialIcons name="format-list-numbered" size={24} color="#ffcc00" />
-                                <Text style={styles.menuText}>Invoice</Text>
-                            </View>
-                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
-                        </TouchableOpacity>
+                       
                     </>
                 )}
 
@@ -162,20 +144,6 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                     </>
                 )}
 
-                {/* Reports Options for Admin */}
-                {userRole === "admin" && (
-                    <TouchableOpacity
-                        style={styles.menuItem}
-                        onPress={() => navigation.navigate("LoadingSlip")}
-                    >
-                        <View style={styles.menuIconText}>
-                            <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
-                            <Text style={styles.menuText}>Loading Slip</Text>
-                        </View>
-                        <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
-                    </TouchableOpacity>
-                )}
-
                 {/* Reports Options for Superadmin */}
                 {userRole === "superadmin" && (
                     <>
@@ -191,6 +159,42 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                             <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
                         </TouchableOpacity>
 
+
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("OrderAcceptance")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Order Acceptance Page</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+
+
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("LoadingSlipSA")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Loading Slip Page</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+
+
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("InvoiceSA")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Invoice Page</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+
                         <TouchableOpacity
                             style={styles.menuItem}
                             onPress={() => navigation.navigate("CreditLimit")}
@@ -201,6 +205,7 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                             </View>
                             <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
                         </TouchableOpacity>
+
                         <TouchableOpacity
                             style={styles.menuItem}
                             onPress={() => navigation.navigate("Remarks")}
@@ -211,6 +216,19 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                             </View>
                             <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
                         </TouchableOpacity>
+
+
+                        <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => navigation.navigate("CollectCashSA")}
+                        >
+                            <View style={styles.menuIconText}>
+                                <MaterialIcons name="insert-chart" size={24} color="#ffcc00" />
+                                <Text style={styles.menuText}>Cash Collection</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+                        </TouchableOpacity>
+
                         <TouchableOpacity
                             style={styles.menuItem}
                             onPress={() => navigation.navigate("CashCollectedReport")}

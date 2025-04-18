@@ -14,11 +14,13 @@ import { checkTokenAndRedirect } from "../../services/auth";
 import { useNavigation } from "@react-navigation/native";
 import moment from 'moment';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { jwtDecode } from 'jwt-decode';
 
 const OrdersPage = () => {
-    const [allOrders, setAllOrders] = useState([]); // State to hold all fetched orders
-    const [orders, setOrders] = useState([]); // State to hold filtered orders for display
+    const [orders, setOrders] = useState([]); // State to hold fetched orders
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const navigation = useNavigation();
     const [expandedOrderDetailsId, setExpandedOrderDetailsId] = useState(null);
     const [orderDetails, setOrderDetails] = useState({});
@@ -38,70 +40,59 @@ const OrdersPage = () => {
     const handleConfirm = (date) => {
         hideDatePicker();
         setSelectedDate(date);
-        // Filter orders based on the newly selected date
-        filterOrdersByDate(date);
     };
 
-    // useCallback for fetchOrders (fetches ALL orders now)
+    // Fetch orders using the new API
     const fetchOrders = useCallback(async () => {
+        console.log("[DEBUG] Fetching user orders");
+        setLoading(true);
+        setError(null);
         try {
-            setLoading(true);
-            const token = await checkTokenAndRedirect(navigation);
-            if (!token) throw new Error("No authorization token found.");
+            const token = await AsyncStorage.getItem("userAuthToken");
+            if (!token) {
+                throw new Error("Authentication token missing");
+            }
 
-            const response = await axios.get(
-                `http://${ipAddress}:8090/orderHistory`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                    params: {
-                        orderBy: "DESC",
-                    },
-                }
-            );
+            const decodedToken = jwtDecode(token);
+            const custId = decodedToken.id;
 
-            setAllOrders(response.data.orders); // Store ALL fetched orders in allOrders
-            console.log("Fetched ALL orders:", response.data.orders.length);
-            filterOrdersByDate(selectedDate); // Initial filter to show today's orders
+            // Construct the URL with optional date query parameter
+            let url = `http://${ipAddress}:8090/get-orders/${custId}`;
+            const formattedDate = moment(selectedDate).format("YYYY-MM-DD");
+            if (formattedDate) {
+                url += `?date=${formattedDate}`;
+            }
+            console.log("[DEBUG] Fetching orders from:", url);
 
+            const headers = {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            };
+
+            const response = await axios.get(url, { headers, timeout: 10000 });
+
+            console.log("[DEBUG] Orders response:", response.data);
+
+            const ordersData = response.data;
+            if (!ordersData.status) {
+                throw new Error(ordersData.message || "Failed to fetch orders");
+            }
+
+            setOrders(ordersData.orders);
         } catch (error) {
-            console.error("Error fetching order history:", error);
-            Alert.alert("Error", "Failed to fetch orders. Please try again.");
+            console.error("[ERROR] Failed to fetch orders:", error);
+            const errorMsg = error.response?.data?.message || error.message || "Failed to fetch customer orders.";
+            setError(errorMsg);
+            Alert.alert("Error", errorMsg);
         } finally {
             setLoading(false);
         }
-    }, [navigation]);
-
-    // Function to filter orders based on selectedDate
-    const filterOrdersByDate = useCallback((dateFilter) => {
-        if (!allOrders) return; // Exit if allOrders is not yet fetched
-
-        const filterDateFormatted = moment(dateFilter).format("YYYY-MM-DD");
-        console.log("DEBUG: Filtering Orders for Date:", filterDateFormatted);
-
-        const filteredOrders = allOrders.filter(order => {
-            if (!order.placed_on) {
-                console.log("DEBUG: order.placed_on is missing for order ID:", order.order_id);
-                return false;
-            }
-            const parsedEpochSeconds = parseInt(order.placed_on, 10);
-            const orderDateMoment = moment.unix(parsedEpochSeconds);
-            const orderDateFormatted = orderDateMoment.format("YYYY-MM-DD");
-            return orderDateFormatted === filterDateFormatted;
-        });
-        setOrders(filteredOrders); // Set the filtered orders to be displayed
-        console.log("Filtered orders count:", filteredOrders.length);
-    }, [allOrders]); // Dependency: allOrders - re-filter when allOrders changes
-
+    }, [selectedDate, navigation]);
 
     useEffect(() => {
-        fetchOrders(); // Fetch all orders on component mount
-    }, [fetchOrders]); // Fetch orders only once on mount
-
-    useEffect(() => {
-        filterOrdersByDate(selectedDate); // Re-filter orders when selectedDate changes
-    }, [selectedDate, filterOrdersByDate]); // Re-filter when selectedDate changes
+        fetchOrders(); // Fetch orders when component mounts or selectedDate changes
+    }, [fetchOrders, selectedDate]);
 
     const fetchOrderProducts = async (orderId) => {
         try {
@@ -140,39 +131,39 @@ const OrdersPage = () => {
     };
 
     const renderOrderDetails = (orderId) => {
-           const products = orderDetails[orderId];
-           if (!expandedOrderDetailsId || expandedOrderDetailsId !== orderId || !products) {
-               return null;
-           }
-   
-           return (
-               <View style={detailStyles.orderDetailsContainer}>
-                   <Text style={detailStyles.orderDetailsTitle}>Order Details:</Text>
-   
-                   {/* Header Row */}
-                   <View style={detailStyles.headerRow}>
-                       <Text style={detailStyles.headerCell}>Product</Text>
-                       <Text style={detailStyles.headerCell}>Category</Text>
-                       <Text style={detailStyles.headerCell}>Quantity</Text>
-                       <Text style={detailStyles.headerCell}>Price</Text>
-                   </View>
-   
-                   {/* Product Rows */}
-                   {products.length > 0 ? (
-                       products.map((product, index) => (
-                           <View key={`${orderId}-${product.product_id}-${index}`} style={detailStyles.productRow}>
-                               <Text style={detailStyles.productCell}>{product.name}</Text>
-                               <Text style={detailStyles.productCell}>{product.category}</Text>
-                               <Text style={detailStyles.productCell}>{product.quantity}</Text>
-                               <Text style={detailStyles.productCell}>₹{product.price}</Text>
-                           </View>
-                       ))
-                   ) : (
-                       <Text style={detailStyles.noProductsText}>No products found.</Text>
-                   )}
-               </View>
-           );
-       };
+        const products = orderDetails[orderId];
+        if (!expandedOrderDetailsId || expandedOrderDetailsId !== orderId || !products) {
+            return null;
+        }
+
+        return (
+            <View style={detailStyles.orderDetailsContainer}>
+                <Text style={detailStyles.orderDetailsTitle}>Order Details:</Text>
+
+                {/* Header Row */}
+                <View style={detailStyles.headerRow}>
+                    <Text style={detailStyles.headerCell}>Product</Text>
+                    <Text style={detailStyles.headerCell}>Category</Text>
+                    <Text style={detailStyles.headerCell}>Quantity</Text>
+                    <Text style={detailStyles.headerCell}>Price</Text>
+                </View>
+
+                {/* Product Rows */}
+                {products.length > 0 ? (
+                    products.map((product, index) => (
+                        <View key={`${orderId}-${product.product_id}-${index}`} style={detailStyles.productRow}>
+                            <Text style={detailStyles.productCell}>{product.name}</Text>
+                            <Text style={detailStyles.productCell}>{product.category}</Text>
+                            <Text style={detailStyles.productCell}>{product.quantity}</Text>
+                            <Text style={detailStyles.productCell}>₹{product.price}</Text>
+                        </View>
+                    ))
+                ) : (
+                    <Text style={detailStyles.noProductsText}>No products found.</Text>
+                )}
+            </View>
+        );
+    };
 
     if (loading) {
         return (
@@ -224,29 +215,22 @@ const OrdersPage = () => {
                         </View>
 
                         {orders.map((order) => (
-                            <View key={order.order_id}>
-                                <TouchableOpacity style={styles.tableRow} onPress={() => handleOrderDetailsPress(order.order_id)}>
+                            <View key={order.id}>
+                                <TouchableOpacity style={styles.tableRow} onPress={() => handleOrderDetailsPress(order.id)}>
                                     <View style={styles.cell}>
                                         <Text style={styles.cellText}>
-                                            {new Date(order.placed_on * 1000).toLocaleDateString(
-                                                "en-US",
-                                                {
-                                                    year: "numeric",
-                                                    month: "short",
-                                                    day: "numeric",
-                                                }
-                                            )}
+                                            {moment.unix(order.placed_on).format("MMM DD, YYYY")}
                                         </Text>
                                     </View>
                                     <View style={styles.cell}>
-                                        <Text style={styles.cellText}>{order.order_id}</Text>
+                                        <Text style={styles.cellText}>{order.id}</Text>
                                     </View>
                                     <View style={styles.cell}>
                                         <Text style={styles.cellText}>₹{order.total_amount}</Text>
                                     </View>
                                     <View style={[styles.cell, styles.actionCell]}>
-                                        <TouchableOpacity onPress={() => handleOrderDetailsPress(order.order_id)}>
-                                            <Text style={styles.detailsButtonText}>{expandedOrderDetailsId === order.order_id ? "Hide" : "View"}</Text>
+                                        <TouchableOpacity onPress={() => handleOrderDetailsPress(order.id)}>
+                                            <Text style={styles.detailsButtonText}>{expandedOrderDetailsId === order.id ? "Hide" : "View"}</Text>
                                         </TouchableOpacity>
                                     </View>
                                     <View style={[styles.cell, styles.statusCell]}>
@@ -255,7 +239,7 @@ const OrdersPage = () => {
                                         </Text>
                                     </View>
                                 </TouchableOpacity>
-                                {renderOrderDetails(order.order_id)}
+                                {renderOrderDetails(order.id)}
                             </View>
                         ))}
                     </View>
@@ -354,38 +338,7 @@ const styles = StyleSheet.create({
         color: "#333",
         textAlign: "center",
     },
-    orderDetailsContainer: {
-        padding: 15,
-        backgroundColor: '#f9f9f9',
-        borderBottomWidth: 1,
-        borderBottomColor: '#E0E0E0',
-    },
-    orderDetailsTitle: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        marginBottom: 10,
-        color: '#333',
-    },
-    productDetailItem: {
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#ddd',
-        marginBottom: 8,
-    },
-    productDetailText: {
-        fontSize: 14,
-        color: '#555',
-    },
-    noProductsText: {
-        fontSize: 14,
-        color: '#777',
-        textAlign: 'center',
-        marginTop: 10,
-    }
 });
-
-
-
 
 const detailStyles = StyleSheet.create({
     orderDetailsContainer: {
@@ -434,6 +387,5 @@ const detailStyles = StyleSheet.create({
         marginTop: 6,
     }
 });
-
 
 export default OrdersPage;

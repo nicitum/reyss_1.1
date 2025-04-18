@@ -24,6 +24,11 @@ import AutoOrderUpdate from './AutoOrderUpdate';
 import UpdateOrdersSA from './UpdateOrdersSA';
 import PaymentHistory from './PaymentHistory';
 
+import OrderAcceptSA from './OrderAcceptSA';
+import LoadingSlipSA from './LoadingSlipSA';
+import CollectCashSA from './CollectCashSA';
+import InvoiceSA from './InvoiceSA';
+
 const Stack = createStackNavigator();
 
 const ProfileStack = () => {
@@ -165,6 +170,32 @@ const ProfileStack = () => {
         name="PaymentHistory"
         component={PaymentHistory} 
         options={{ title: 'Payment History' }} 
+      />
+
+      <Stack.Screen 
+        name="OrderAcceptance"
+        component={OrderAcceptSA} 
+        options={{ title: 'Order Acceptance Page' }} 
+      />
+
+
+      <Stack.Screen 
+        name="LoadingSlipSA"
+        component={LoadingSlipSA} 
+        options={{ title: '' }} 
+      />
+
+
+      <Stack.Screen 
+        name="CollectCashSA"
+        component={CollectCashSA} 
+        options={{ title: 'Collect Cash SA' }} 
+      />
+
+      <Stack.Screen 
+        name="InvoiceSA"
+        component={InvoiceSA}
+        options={{ title: 'Invoice Page' }} 
       />
 
 

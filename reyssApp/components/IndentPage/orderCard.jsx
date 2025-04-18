@@ -5,8 +5,7 @@ import moment from "moment";
 
 const OrderCard = ({ shift, order, selectedDate, onOrderClick }) => {
   const isPastDate = moment(selectedDate, "YYYY-MM-DD").isBefore(
-    moment(),
-    "day"
+      moment().startOf("day")
   );
 
   // Determine if the arrow button should be shown

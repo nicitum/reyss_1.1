@@ -440,7 +440,7 @@ const PlaceOrderPage = ({ route }) => {
                 // Order placed successfully! Now deduct from credit limit
                 const orderResponseData = placeOrderResponse.data;
                 const placedOrderId = orderResponseData.orderId;
-                console.log('hello',totalOrderAmount)
+           
 
                 const decodedToken = jwtDecode(userAuthToken);
                 const customerId = decodedToken.id;
@@ -500,7 +500,17 @@ const PlaceOrderPage = ({ route }) => {
                             text1: 'Order Placed & Credit Updated',
                             text2: "Order Placed and credit limit updated successfully!"
                         });
-                        navigation.navigate("IndentPage", { orderPlacedSuccessfully: true });
+                        Toast.show({
+                            type: 'success',
+                            text1: 'Order Placed Successfully',
+                            text2: 'Your order has been placed and credit limit updated.'
+                        });
+
+                        setTimeout(() => {
+                            navigation.navigate("IndentPage", { 
+                                orderPlacedSuccessfully: true
+                            });
+                        }, 800);  // Small delay to ensure toast is visible
     
                     } else {
                         // Handle credit deduction failure
@@ -510,7 +520,17 @@ const PlaceOrderPage = ({ route }) => {
                             text1: 'Order Placed, but Credit Update Failed',
                             text2: "Order placed, but there was an error updating your credit limit. Please contact support."
                         });
-                        navigation.navigate("IndentPage", { orderPlacedSuccessfully: true }); // For now, still navigate to success
+                        Toast.show({
+                            type: 'success',
+                            text1: 'Order Placed Successfully',
+                            text2: 'Your order has been placed and credit limit updated.'
+                        });
+
+                        setTimeout(() => {
+                            navigation.navigate("IndentPage", { 
+                                orderPlacedSuccessfully: true
+                            });
+                        }, 800); 
                     }
     
                 } catch (deductCreditError) {
@@ -521,7 +541,17 @@ const PlaceOrderPage = ({ route }) => {
                         text1: 'Order Placed, but Credit Update Error',
                         text2: "Order placed, but there was an error updating your credit limit. Please contact support."
                     });
-                     navigation.navigate("IndentPage", { orderPlacedSuccessfully: true }); // For now, still navigate to success
+                    Toast.show({
+                        type: 'success',
+                        text1: 'Order Placed Successfully',
+                        text2: 'Your order has been placed and credit limit updated.'
+                    });
+
+                    setTimeout(() => {
+                        navigation.navigate("IndentPage", { 
+                            orderPlacedSuccessfully: true
+                        });
+                    }, 800); 
                 }
                 // ====================== END: Credit Deduct Logic - CORRECTED for Place Order ==========================
     

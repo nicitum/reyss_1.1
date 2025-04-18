@@ -30,39 +30,56 @@ const UpdateOrdersU = () => {
         fetchUsersOrders();
     }, []);
 
-    const fetchUsersOrders = async () => {
+    const fetchUsersOrders = async (selectedDate = null) => {
         setLoading(true);
         setError(null);
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
+            if (!token) {
+                throw new Error("Authentication token missing");
+            }
+    
             const decodedToken = jwtDecode(token);
             const custId = decodedToken.id;
-
-            const url = `http://${ipAddress}:8090/get-orders/${custId}`;
-            const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+    
+            // Construct the URL with optional date query parameter
+            let url = `http://${ipAddress}:8090/get-orders/${custId}`;
+            if (selectedDate) {
+                // Validate date format (YYYY-MM-DD)
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+                    throw new Error("Invalid date format. Use YYYY-MM-DD");
+                }
+                url += `?date=${selectedDate}`;
+            }
+            console.log("[DEBUG] Fetching orders from:", url);
+    
+            const headers = {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+                Accept: "application/json",
+            };
+    
             const ordersResponse = await fetch(url, { headers });
-
+    
             if (!ordersResponse.ok) {
                 const errorText = await ordersResponse.text();
                 throw new Error(`Failed to fetch customer orders. Status: ${ordersResponse.status}, Text: ${errorText}`);
             }
-
+    
             const ordersData = await ordersResponse.json();
-            const todayFormatted = moment().format("YYYY-MM-DD");
-            const todaysOrders = ordersData.orders.filter(order => {
-                if (!order.placed_on) return false;
-                const parsedEpochSeconds = parseInt(order.placed_on, 10);
-                const orderDateFormatted = moment.unix(parsedEpochSeconds).format("YYYY-MM-DD");
-                return orderDateFormatted === todayFormatted;
-            });
-
-            setOrders(todaysOrders);
+            if (!ordersData.status) {
+                throw new Error(ordersData.message || "Failed to fetch orders");
+            }
+    
+            setOrders(ordersData.orders);
             const amountsMap = {};
-            todaysOrders.forEach(order => amountsMap[order.id] = order.total_amount);
+            ordersData.orders.forEach(order => amountsMap[order.id] = order.total_amount);
             setOriginalOrderAmounts(amountsMap);
         } catch (fetchOrdersError) {
-            setError(fetchOrdersError.message || "Failed to fetch customer orders.");
-            Toast.show({ type: 'error', text1: 'Fetch Error', text2: fetchOrdersError.message });
+            console.error("[ERROR] Failed to fetch orders:", fetchOrdersError);
+            const errorMsg = fetchOrdersError.message || "Failed to fetch customer orders.";
+            setError(errorMsg);
+            Toast.show({ type: 'error', text1: 'Fetch Error', text2: errorMsg });
         } finally {
             setLoading(false);
         }

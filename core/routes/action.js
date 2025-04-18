@@ -118,19 +118,64 @@ router.post("/update-delivery-status", async (req, res) => {
 router.get("/get-orders/:customer_id", async (req, res) => {
     try {
         const { customer_id } = req.params;
+        const { date } = req.query;
 
         if (!customer_id) {
             return res.status(400).json({ status: false, message: "Customer ID is required" });
         }
 
-        const fetchQuery = "SELECT id,total_amount,customer_id,delivery_status,approve_status,cancelled,placed_on,loading_slip,order_type FROM orders WHERE customer_id = ? ORDER BY id DESC";
-        const fetchResult = await executeQuery(fetchQuery, [customer_id]);
+        let fetchQuery = "SELECT id, total_amount, customer_id, delivery_status, approve_status, cancelled, placed_on, loading_slip, order_type FROM orders WHERE customer_id = ? ";
+        let queryParams = [customer_id];
 
-        if (fetchResult.length > 0) {
-            return res.json({ status: true, orders: fetchResult });
-        } else {
-            return res.json({ status: true, orders: [] });
+        if (date) {
+            // Validate date format (YYYY-MM-DD)
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                return res.status(400).json({ status: false, message: "Invalid date format. Use YYYY-MM-DD" });
+            }
+
+            // Calculate start and end of the day in Unix timestamps
+            const startOfDay = moment(date).startOf('day').unix();
+            const endOfDay = moment(date).endOf('day').unix();
+
+            fetchQuery += "AND placed_on >= ? AND placed_on <= ? ";
+            queryParams.push(startOfDay, endOfDay);
         }
+
+        fetchQuery += "ORDER BY id DESC";
+        const fetchResult = await executeQuery(fetchQuery, queryParams);
+
+        return res.json({ status: true, orders: fetchResult });
+    } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).json({ status: false, message: "Internal Server Error" });
+    }
+});
+
+router.get("/get-orders-sa/", async (req, res) => {
+    try {
+        const { date } = req.query;
+
+        let fetchQuery = "SELECT * FROM orders ORDER BY id DESC";
+        let queryParams = [];
+
+        if (date) {
+            // Validate date format (YYYY-MM-DD)
+            const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+            if (!isValidDate) {
+                return res.status(400).json({ status: false, message: "Invalid date format. Use YYYY-MM-DD" });
+            }
+
+            // Convert date to Unix timestamp range for the given day
+            const startOfDay = Math.floor(new Date(date).setHours(0, 0, 0, 0) / 1000); // Start of day in seconds
+            const endOfDay = Math.floor(new Date(date).setHours(23, 59, 59, 999) / 1000); // End of day in seconds
+
+            fetchQuery = "SELECT * FROM orders WHERE placed_on >= ? AND placed_on <= ? ORDER BY id DESC";
+            queryParams = [startOfDay, endOfDay];
+        }
+
+        const fetchResult = await executeQuery(fetchQuery, queryParams);
+
+        return res.json({ status: true, orders: fetchResult });
     } catch (error) {
         console.error("Error fetching orders:", error);
         res.status(500).json({ status: false, message: "Internal Server Error" });
@@ -138,29 +183,43 @@ router.get("/get-orders/:customer_id", async (req, res) => {
 });
 
 
-
-
-// API to fetch orders for a specific admin with total indent amount
 router.get("/get-admin-orders/:admin_id", async (req, res) => {
     try {
         const { admin_id } = req.params;
+        const { date } = req.query;
 
         if (!admin_id) {
             return res.status(400).json({ success: false, message: "Admin ID is required" });
         }
 
-        // Updated SQL Query to fetch orders along with total indent amount
-        const query = `
+        // Base SQL Query to fetch orders along with total indent amount
+        let query = `
             SELECT o.*, 
                    SUM(op.price * op.quantity) AS amount 
             FROM orders o
             JOIN admin_assign a ON o.customer_id = a.cust_id
             LEFT JOIN order_products op ON o.id = op.order_id
             WHERE a.admin_id = ?
-            GROUP BY o.id;
         `;
+        let queryParams = [admin_id];
 
-        const orders = await executeQuery(query, [admin_id]);
+        if (date) {
+            // Validate date format (YYYY-MM-DD)
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                return res.status(400).json({ success: false, message: "Invalid date format. Use YYYY-MM-DD" });
+            }
+
+            // Calculate start and end of the day in Unix timestamps
+            const startOfDay = moment(date).startOf('day').unix();
+            const endOfDay = moment(date).endOf('day').unix();
+
+            query += " AND o.placed_on >= ? AND o.placed_on <= ?";
+            queryParams.push(startOfDay, endOfDay);
+        }
+
+        query += " GROUP BY o.id ORDER BY o.id DESC";
+
+        const orders = await executeQuery(query, queryParams);
 
         res.json({ success: true, orders });
 
@@ -169,7 +228,6 @@ router.get("/get-admin-orders/:admin_id", async (req, res) => {
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 });
-
 
 
 
@@ -266,7 +324,6 @@ router.get("/order-products", async (req, res) => { // <-- GET request, path: /o
 
 
 
-// API to fetch the most recent order for a specific customer and order type
 router.get("/most-recent-order", async (req, res) => {
     try {
         const { customerId, orderType } = req.query;
@@ -279,93 +336,29 @@ router.get("/most-recent-order", async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid Order Type. Must be 'AM' or 'PM'" });
         }
 
-        // SQL Query to fetch the most recent order
-
-        
+        // Optimized query (no FROM_UNIXTIME, uses index)
         const query = `
-            SELECT *  
-            FROM orders  
-            WHERE customer_id = ?  
-            AND order_type = ?  
-            ORDER BY FROM_UNIXTIME(placed_on) DESC  
-            LIMIT 1;
-
+            SELECT *
+            FROM orders
+            WHERE customer_id = ?
+              AND order_type = ?
+            ORDER BY placed_on DESC
+            LIMIT 1
         `;
 
         const recentOrder = await executeQuery(query, [customerId, orderType]);
 
         if (recentOrder && recentOrder.length > 0) {
-            // Order found
-            res.json({ success: true, order: recentOrder[0] }); // Return the first (most recent) order
+            res.json({ success: true, order: recentOrder[0] });
         } else {
-            // No order found
             res.json({ success: true, order: null, message: "No previous orders found for this customer and order type" });
         }
-
     } catch (error) {
         console.error("Error fetching most recent order:", error);
         res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
     }
 });
 
-// API to fetch the most recent orders for multiple customers and both AM/PM order types
-router.post("/most-recent-orders", async (req, res) => {
-    try {
-        const { customerIds } = req.body;
-
-        // Validate input
-        if (!customerIds || !Array.isArray(customerIds) || customerIds.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "customerIds must be a non-empty array",
-            });
-        }
-
-        // Sanitize customerIds to prevent SQL injection (assuming executeQuery handles this, but double-checking)
-        const validCustomerIds = customerIds.map(id => String(id)); // Ensure all are strings
-
-        // SQL Query to fetch the most recent AM and PM orders for all customers
-        const query = `
-            SELECT o1.*
-            FROM orders o1
-            WHERE o1.customer_id IN (?)
-            AND o1.order_type IN ('AM', 'PM')
-            AND o1.placed_on = (
-                SELECT MAX(o2.placed_on)
-                FROM orders o2
-                WHERE o2.customer_id = o1.customer_id
-                AND o2.order_type = o1.order_type
-            )
-        `;
-
-        // Execute query with all customer IDs
-        const orders = await executeQuery(query, [validCustomerIds]);
-
-        // Process results into a structured response
-        const result = {};
-        validCustomerIds.forEach(customerId => {
-            result[customerId] = { am: null, pm: null };
-        });
-
-        orders.forEach(order => {
-            const { customer_id, order_type } = order;
-            if (order_type === 'AM') {
-                result[customer_id].am = order;
-            } else if (order_type === 'PM') {
-                result[customer_id].pm = order;
-            }
-        });
-
-        res.json({ success: true, orders: result });
-    } catch (error) {
-        console.error("Error fetching most recent orders:", error);
-        res.status(500).json({
-            success: false,
-            message: "Internal Server Error",
-            error: error.message,
-        });
-    }
-});
 
 
 
@@ -2123,6 +2116,92 @@ router.post("/global-price-update", async (req, res) => {
     }
 });
 
+
+
+//Collation mismatch can come fix it proprely -----
+router.get("/fetch-all-invoices", async (req, res) => {
+    try {
+        // SQL query to fetch all invoices with details
+        const query = `
+            SELECT 
+                i.invoice_id AS "Invoice No",
+                i.id AS "id",
+                (i.invoice_date) AS "Voucher Date",
+                (i.invoice_date) AS "Invoice Date",
+                u.name AS "Customer Name",
+                u.phone AS "Customer Mobile",
+                op.name AS "Product Description",
+                p.brand AS "Stock Group", 
+                op.category AS "Stock Category",
+                op.price AS "Rate",
+                op.quantity AS "Quantity",
+                (op.price * op.quantity) AS "Amount",
+                p.hsn_code AS "HSN",
+                op.gst_rate AS "GST %",
+                o.id AS "order_id",
+                o.placed_on AS "order_date"
+            FROM 
+                invoice i
+            JOIN 
+                orders o ON i.order_id = o.id 
+            JOIN 
+                users u ON o.customer_id = u.customer_id 
+            JOIN 
+                order_products op ON o.id = op.order_id 
+            JOIN 
+                products p ON op.product_id = p.id
+            ORDER BY
+                i.invoice_date DESC,
+                i.invoice_id, 
+                op.product_id 
+        `;
+
+        // Execute the query
+        const results = await executeQuery(query);
+
+        if (results.length > 0) {
+            // Group by invoice to organize the data
+            const invoices = {};
+            results.forEach(row => {
+                if (!invoices[row['Invoice No']]) {
+                    invoices[row['Invoice No']] = {
+                        invoice_id: row['Invoice No'],
+                        id: row['id'],
+                        voucher_date: row['Voucher Date'],
+                        invoice_date: row['Invoice Date'],
+                        customer_name: row['Customer Name'] || 'Unknown',
+                        customer_mobile: row['Customer Mobile'] || '-',
+                        order_id: row['order_id'] || '-',
+                        order_date: row['order_date'] || null,
+                        items: []
+                    };
+                }
+                invoices[row['Invoice No']].items.push({
+                    product_description: row['Product Description'] || '-',
+                    stock_group: row['Stock Group'] || '-',
+                    stock_category: row['Stock Category'] || '-',
+                    rate: row['Rate'] || 0,
+                    quantity: row['Quantity'] || 0,
+                    amount: row['Amount'] || 0,
+                    hsn: row['HSN'] || '-',
+                    gst_percentage: row['GST %'] || 0
+                });
+            });
+
+            return res.status(200).json({
+                message: "All invoices fetched successfully",
+                data: Object.values(invoices)
+            });
+        } else {
+            return res.status(404).json({ message: "No invoices found" });
+        }
+    } catch (error) {
+        console.error("Error fetching all invoices:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+
 router.get("/fetch-total-paid", async (req, res) => {
     try {
         const customerId = req.query.customer_id;
@@ -2187,6 +2266,8 @@ router.get("/fetch-total-paid-by-day", async (req, res) => {
         return res.status(500).json({ message: "Internal server error", error: error.message });
     }
 });
+
+
 module.exports = router;
 
 

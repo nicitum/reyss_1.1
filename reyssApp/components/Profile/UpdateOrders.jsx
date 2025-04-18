@@ -35,22 +35,45 @@ const UpdateOrderScreen = () => {
         setError(null);
         try {
             const token = await AsyncStorage.getItem("userAuthToken");
+            if (!token) throw new Error("No authentication token found");
+    
             const decodedToken = jwtDecode(token);
             const adminId = decodedToken.id1;
-
-            const url = `http://${ipAddress}:8090/get-admin-orders/${adminId}`;
-            const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
-            const ordersResponse = await fetch(url, { headers });
-
-            if (!ordersResponse.ok) throw new Error(`Failed to fetch admin orders: ${ordersResponse.status}`);
-            const ordersData = await ordersResponse.json();
+    
             const todayFormatted = moment().format("YYYY-MM-DD");
-            const todaysOrders = ordersData.orders.filter(order => moment.unix(parseInt(order.placed_on, 10)).format("YYYY-MM-DD") === todayFormatted);
-
-            setOrders(todaysOrders);
+            const url = `http://${ipAddress}:8090/get-admin-orders/${adminId}?date=${todayFormatted}`;
+            console.log("[DEBUG] Fetching admin orders from:", url);
+    
+            const headers = {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+                Accept: "application/json"
+            };
+    
+            const ordersResponse = await fetch(url, { headers });
+    
+            if (!ordersResponse.ok) {
+                const errorText = await ordersResponse.text();
+                throw new Error(`Failed to fetch admin orders: ${ordersResponse.status}, ${errorText}`);
+            }
+    
+            const ordersData = await ordersResponse.json();
+            if (!ordersData.success) {
+                throw new Error(ordersData.message || "Failed to fetch admin orders");
+            }
+    
+            console.log("[DEBUG] Fetched orders data:", ordersData);
+    
+            setOrders(ordersData.orders);
         } catch (fetchOrdersError) {
-            setError(fetchOrdersError.message || "Failed to fetch admin orders.");
-            Toast.show({ type: 'error', text1: 'Fetch Error', text2: fetchOrdersError.message });
+            const errorMessage = fetchOrdersError.message || "Failed to fetch admin orders.";
+            setError(errorMessage);
+            Toast.show({
+                type: 'error',
+                text1: 'Fetch Error',
+                text2: errorMessage
+            });
+            console.error("[ERROR] Error fetching admin orders:", fetchOrdersError);
         } finally {
             setLoading(false);
         }

@@ -75,54 +75,71 @@ const UpdateOrdersU = () => {
     initialize()
   }, [route.params])
 
-  const fetchUsersOrders = async () => {
-    console.log("[DEBUG] Fetching user orders")
-    setLoading(true)
-    setError(null)
+  
+  const fetchUsersOrders = async (selectedDate = null) => {
+    console.log("[DEBUG] Fetching user orders");
+    setLoading(true);
+    setError(null);
     try {
-      const token = await AsyncStorage.getItem("userAuthToken")
-      if (!token) {
-        throw new Error("Authentication token missing")
-      }
+        const token = await AsyncStorage.getItem("userAuthToken");
+        if (!token) {
+            throw new Error("Authentication token missing");
+        }
 
-      const decodedToken = jwtDecode(token)
-      const custId = decodedToken.id
+        const decodedToken = jwtDecode(token);
+        const custId = decodedToken.id;
 
-      const url = `http://${ipAddress}:8090/get-orders/${custId}`
-      console.log("[DEBUG] Fetching orders from:", url)
+        // Construct the URL with optional date query parameter
+        let url = `http://${ipAddress}:8090/get-orders/${custId}`;
+        if (selectedDate) {
+            // Validate date format (YYYY-MM-DD)
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+                throw new Error("Invalid date format. Use YYYY-MM-DD");
+            }
+            url += `?date=${selectedDate}`;
+        }
+        console.log("[DEBUG] Fetching orders from:", url);
 
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      }
+        const headers = {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+        };
 
-      const response = await axios.get(url, { headers, timeout: 10000 })
+        const response = await axios.get(url, { headers, timeout: 10000 });
 
-      console.log("[DEBUG] Orders response:", response.data)
+        console.log("[DEBUG] Orders response:", response.data);
 
-      const ordersData = response.data
-      const todayFormatted = moment().format("YYYY-MM-DD")
-      const todaysOrders = ordersData.orders.filter((order) => {
-        if (!order.placed_on) return false
-        const parsedEpochSeconds = Number.parseInt(order.placed_on, 10)
-        const orderDateFormatted = moment.unix(parsedEpochSeconds).format("YYYY-MM-DD")
-        return orderDateFormatted === todayFormatted
-      })
+        const ordersData = response.data;
+        if (!ordersData.status) {
+            throw new Error(ordersData.message || "Failed to fetch orders");
+        }
 
-      setOrders(todaysOrders)
-      const amountsMap = {}
-      todaysOrders.forEach((order) => (amountsMap[order.id] = order.total_amount))
-      setOriginalOrderAmounts(amountsMap)
+        const todayFormatted = moment().format("YYYY-MM-DD");
+
+        // Filter orders for today and future dates if no specific date is provided
+        const filteredOrders = selectedDate
+            ? ordersData.orders // Use all orders for the selected date
+            : ordersData.orders.filter((order) => {
+                  if (!order.placed_on) return false;
+                  const parsedEpochSeconds = Number.parseInt(order.placed_on, 10);
+                  const orderDateFormatted = moment.unix(parsedEpochSeconds).format("YYYY-MM-DD");
+                  return orderDateFormatted >= todayFormatted;
+              });
+
+        setOrders(filteredOrders);
+        const amountsMap = {};
+        filteredOrders.forEach((order) => (amountsMap[order.id] = order.total_amount));
+        setOriginalOrderAmounts(amountsMap);
     } catch (error) {
-      console.error("[ERROR] Failed to fetch orders:", error)
-      const errorMsg = error.response?.data?.message || error.message || "Failed to fetch customer orders."
-      setError(errorMsg)
-      showToast(errorMsg, "error")
+        console.error("[ERROR] Failed to fetch orders:", error);
+        const errorMsg = error.response?.data?.message || error.message || "Failed to fetch customer orders.";
+        setError(errorMsg);
+        showToast(errorMsg, "error");
     } finally {
-      setLoading(false)
+        setLoading(false);
     }
-  }
+};
 
   const fetchOrderProducts = async (orderIdToFetch) => {
     if (!orderIdToFetch) {

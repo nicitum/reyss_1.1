@@ -1,85 +1,63 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, FlatList, StyleSheet, ActivityIndicator, ScrollView, Modal, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, FlatList, StyleSheet, ActivityIndicator, Alert, ScrollView, Modal, TouchableOpacity } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { jwtDecode } from 'jwt-decode';
 import { ipAddress } from '../../urls';
 import Toast from 'react-native-toast-message';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-const CollectCashPage = () => {
-    const [assignedUsers, setAssignedUsers] = useState([]);
+const CollectCashSA = () => {
+    const [users, setUsers] = useState([]);
     const [amountDueMap, setAmountDueMap] = useState({});
     const [cashInputMap, setCashInputMap] = useState({});
-    const [loadingUsers, setLoadingUsers] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [loadingAmounts, setLoadingAmounts] = useState({});
     const [updatingCash, setUpdatingCash] = useState({});
     const [error, setError] = useState(null);
-    const [userAuthToken, setUserAuthToken] = useState(null);
-    const [adminId, setAdminId] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [filteredUsers, setFilteredUsers] = useState([]);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [modalCustomerId, setModalCustomerId] = useState(null);
     const [modalCash, setModalCash] = useState(null);
 
-    const getTokenAndAdminId = useCallback(async () => {
+    const fetchAllUsers = useCallback(async () => {
+        setLoading(true);
+        setError(null);
         try {
-            setLoadingUsers(true);
             const token = await AsyncStorage.getItem("userAuthToken");
             if (!token) {
-                throw new Error("User authentication token not found.");
+                throw new Error("Authentication token not found. Please log in.");
             }
-            setUserAuthToken(token);
-            const decodedToken = jwtDecode(token);
-            const currentAdminId = decodedToken.id1;
-            setAdminId(currentAdminId);
-            return { currentAdminId, token };
-        } catch (err) {
-            setError(err.message || "Failed to retrieve token and admin ID.");
-            return { currentAdminId: null, token: null };
-        } finally {
-            setLoadingUsers(false);
-        }
-    }, []);
 
-    const fetchAssignedUsers = useCallback(async (currentAdminId, userAuthToken) => {
-        if (!currentAdminId || !userAuthToken) {
-            return;
-        }
-        setLoadingUsers(true);
-        try {
-            const response = await fetch(`http://${ipAddress}:8090/assigned-users/${currentAdminId}`, {
+            const url = `http://${ipAddress}:8090/allUsers/`;
+            const response = await fetch(url, {
                 headers: {
-                    "Authorization": `Bearer ${userAuthToken}`,
+                    "Authorization": `Bearer ${token}`,
                     "Content-Type": "application/json",
                 },
             });
 
             if (!response.ok) {
-                const message = `Failed to fetch assigned users. Status: ${response.status}`;
-                throw new Error(message);
+                const errorText = await response.text();
+                throw new Error(`Failed to fetch users: ${response.status} - ${errorText}`);
             }
 
-            const data = await response.json();
-            let usersArray = [];
-            if (Array.isArray(data.assignedUsers)) {
-                usersArray = data.assignedUsers;
-            } else if (data.assignedUsers) {
-                usersArray = [data.assignedUsers];
+            const responseJson = await response.json();
+            if (responseJson && responseJson.data && Array.isArray(responseJson.data)) {
+                setUsers(responseJson.data);
+                const initialLoadingAmounts = {};
+                responseJson.data.forEach(user => {
+                    initialLoadingAmounts[user.customer_id] = false;
+                });
+                setLoadingAmounts(initialLoadingAmounts);
+            } else {
+                setUsers([]);
+                setError("No customers found.");
             }
-
-            setAssignedUsers(usersArray);
-
-            const initialLoadingAmounts = {};
-            usersArray.forEach(user => {
-                initialLoadingAmounts[user.cust_id] = false;
-            });
-            setLoadingAmounts(initialLoadingAmounts);
-        } catch (error) {
-            setError(error.message || "Error fetching assigned users.");
-            setAssignedUsers([]);
+        } catch (fetchError) {
+            setError(fetchError.message || "Failed to fetch users.");
+            Toast.show({ type: 'error', text1: 'Fetch Error', text2: fetchError.message });
         } finally {
-            setLoadingUsers(false);
+            setLoading(false);
         }
     }, []);
 
@@ -174,36 +152,30 @@ const CollectCashPage = () => {
     const handleSearchChange = (text) => {
         setSearchQuery(text);
         if (text) {
-            const filtered = assignedUsers.filter(user =>
+            const filtered = users.filter(user =>
                 user.name.toLowerCase().includes(text.toLowerCase())
             );
             setFilteredUsers(filtered);
         } else {
-            setFilteredUsers(assignedUsers);
+            setFilteredUsers(users);
         }
     };
 
     useEffect(() => {
-        const loadData = async () => {
-            const authData = await getTokenAndAdminId();
-            if (authData.currentAdminId && authData.token) {
-                await fetchAssignedUsers(authData.currentAdminId, authData.token);
-            }
-        };
-        loadData();
-    }, [getTokenAndAdminId, fetchAssignedUsers]);
+        fetchAllUsers();
+    }, [fetchAllUsers]);
 
     useEffect(() => {
-        if (assignedUsers.length > 0) {
-            assignedUsers.forEach(user => {
-                fetchAmountDue(user.cust_id);
+        if (users.length > 0) {
+            users.forEach(user => {
+                fetchAmountDue(user.customer_id);
             });
         }
-    }, [assignedUsers, fetchAmountDue]);
+    }, [users, fetchAmountDue]);
 
-    const usersToDisplay = searchQuery ? filteredUsers : assignedUsers;
+    const usersToDisplay = searchQuery ? filteredUsers : users;
 
-    if (loadingUsers) {
+    if (loading) {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#007bff" />
@@ -244,19 +216,19 @@ const CollectCashPage = () => {
                 ) : (
                     <FlatList
                         data={usersToDisplay}
-                        keyExtractor={(item) => item.cust_id}
+                        keyExtractor={(item) => item.customer_id}
                         renderItem={({ item }) => (
                             <View style={styles.card}>
                                 <View style={styles.cardHeader}>
                                     <Text style={styles.customerName}>{item.name}</Text>
-                                    <Text style={styles.customerId}>ID: {item.cust_id}</Text>
+                                    <Text style={styles.customerId}>ID: {item.customer_id}</Text>
                                 </View>
                                 <View style={styles.cardBody}>
                                     <Text style={styles.amountDue}>
-                                        Amount Due: {loadingAmounts[item.cust_id] ? (
+                                        Amount Due: {loadingAmounts[item.customer_id] ? (
                                             <ActivityIndicator size="small" color="#007bff" />
-                                        ) : amountDueMap[item.cust_id] !== 'Error' ? (
-                                            `${parseFloat(amountDueMap[item.cust_id]).toFixed(2)}`
+                                        ) : amountDueMap[item.customer_id] !== 'Error' ? (
+                                            `${parseFloat(amountDueMap[item.customer_id]).toFixed(2)}`
                                         ) : (
                                             'Error'
                                         )}
@@ -266,15 +238,15 @@ const CollectCashPage = () => {
                                             style={styles.cashInput}
                                             placeholder="0.00"
                                             keyboardType="numeric"
-                                            value={cashInputMap[item.cust_id] || ''}
-                                            onChangeText={(text) => handleCashInputChange(item.cust_id, text)}
+                                            value={cashInputMap[item.customer_id] || ''}
+                                            onChangeText={(text) => handleCashInputChange(item.customer_id, text)}
                                         />
                                         <TouchableOpacity
-                                            style={[styles.collectButton, updatingCash[item.cust_id] && styles.disabledButton]}
-                                            onPress={() => handleCollectCash(item.cust_id, cashInputMap[item.cust_id])}
-                                            disabled={updatingCash[item.cust_id]}
+                                            style={[styles.collectButton, updatingCash[item.customer_id] && styles.disabledButton]}
+                                            onPress={() => handleCollectCash(item.customer_id, cashInputMap[item.customer_id])}
+                                            disabled={updatingCash[item.customer_id]}
                                         >
-                                            {updatingCash[item.cust_id] ? (
+                                            {updatingCash[item.customer_id] ? (
                                                 <ActivityIndicator size="small" color="#fff" />
                                             ) : (
                                                 <Text style={styles.collectButtonText}>Collect</Text>
@@ -509,4 +481,4 @@ const styles = StyleSheet.create({
     },
 });
 
-export default CollectCashPage;
+export default CollectCashSA;
