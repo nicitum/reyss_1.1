@@ -358,6 +358,8 @@ const UpdateOrdersSA = () => {
             setLoading(false);
         }
     };
+
+    
     const renderOrderItem = ({ item }) => (
         <TouchableOpacity
             style={[styles.orderItem, selectedOrderId === item.id && styles.selectedOrderItem]}

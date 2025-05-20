@@ -283,20 +283,26 @@ const ProfilePage = ({ setIsLoggedIn }) => {
                 )}
 
                 {/* Privacy Policy and Terms & Conditions at the end - Available to all roles */}
-                <TouchableOpacity style={styles.menuItem}>
-                    <View style={styles.menuIconText}>
-                        <MaterialIcons name="security" size={24} color="#ffcc00" />
-                        <Text style={styles.menuText}>Privacy Policy</Text>
-                    </View>
-                    <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem}>
-                    <View style={styles.menuIconText}>
-                        <MaterialIcons name="info-outline" size={24} color="#ffcc00" />
-                        <Text style={styles.menuText}>Terms & Conditions</Text>
-                    </View>
-                    <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
-                </TouchableOpacity>
+                <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => navigation.navigate('PrivacyPolicy')}
+            >
+                <View style={styles.menuIconText}>
+                    <MaterialIcons name="security" size={24} color="#ffcc00" />
+                    <Text style={styles.menuText}>Privacy Policy</Text>
+                </View>
+                <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => navigation.navigate('TermsConditions')}
+            >
+                <View style={styles.menuIconText}>
+                    <MaterialIcons name="info-outline" size={24} color="#ffcc00" />
+                    <Text style={styles.menuText}>Terms & Conditions</Text>
+                </View>
+                <MaterialIcons name="keyboard-arrow-right" size={24} color="#ffcc00" />
+            </TouchableOpacity>
             </ScrollView>
 
             <ProfileModal visible={modalData.visible} onClose={closeModal} content={modalData.content} />

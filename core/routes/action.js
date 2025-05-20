@@ -722,7 +722,7 @@ router.post("/on-behalf", async (req, res) => {
         }
 
         const checkReferenceProductsQuery = `
-            SELECT product_id, quantity, price, name, category
+            SELECT product_id, quantity, price, name, category,gst_rate
             FROM order_products
             WHERE order_id = ?
             AND LOWER(category) NOT LIKE '%others%'
@@ -755,8 +755,8 @@ router.post("/on-behalf", async (req, res) => {
 
         // 4. Insert Order Products from reference order
         const insertOrderProductsQuery = `
-            INSERT INTO order_products (order_id, product_id, quantity, price, name, category)
-            SELECT ?, product_id, quantity, price, name, category
+            INSERT INTO order_products (order_id, product_id, quantity, price, name, category,gst_rate)
+            SELECT ?, product_id, quantity, price, name, category,gst_rate
             FROM order_products
             WHERE order_id = ?
             AND LOWER(category) NOT LIKE '%others%'
@@ -2118,16 +2118,26 @@ router.post("/global-price-update", async (req, res) => {
 
 
 
-//Collation mismatch can come fix it proprely -----
 router.get("/fetch-all-invoices", async (req, res) => {
     try {
-        // SQL query to fetch all invoices with details
-        const query = `
+        // Extract startDate and endDate from query parameters
+        const { startDate, endDate } = req.query;
+
+        // Validate date parameters
+        if (startDate && !moment(startDate, 'YYYY-MM-DD', true).isValid()) {
+            return res.status(400).json({ message: "Invalid startDate format. Use YYYY-MM-DD" });
+        }
+        if (endDate && !moment(endDate, 'YYYY-MM-DD', true).isValid()) {
+            return res.status(400).json({ message: "Invalid endDate format. Use YYYY-MM-DD" });
+        }
+
+        // Base SQL query
+        let query = `
             SELECT 
                 i.invoice_id AS "Invoice No",
                 i.id AS "id",
-                (i.invoice_date) AS "Voucher Date",
-                (i.invoice_date) AS "Invoice Date",
+                i.invoice_date AS "Voucher Date",
+                i.invoice_date AS "Invoice Date",
                 u.name AS "Customer Name",
                 u.phone AS "Customer Mobile",
                 op.name AS "Product Description",
@@ -2143,63 +2153,82 @@ router.get("/fetch-all-invoices", async (req, res) => {
             FROM 
                 invoice i
             JOIN 
-                orders o ON i.order_id = o.id 
+                orders o ON i.order_id = o.id COLLATE utf8mb4_0900_ai_ci
             JOIN 
-                users u ON o.customer_id = u.customer_id 
+                users u ON o.customer_id = u.customer_id COLLATE utf8mb4_0900_ai_ci
             JOIN 
-                order_products op ON o.id = op.order_id 
+                order_products op ON o.id = op.order_id COLLATE utf8mb4_0900_ai_ci
             JOIN 
-                products p ON op.product_id = p.id
-            ORDER BY
-                i.invoice_date DESC,
-                i.invoice_id, 
-                op.product_id 
+                products p ON op.product_id = p.id COLLATE utf8mb4_0900_ai_ci
         `;
 
-        // Execute the query
-        const results = await executeQuery(query);
-
-        if (results.length > 0) {
-            // Group by invoice to organize the data
-            const invoices = {};
-            results.forEach(row => {
-                if (!invoices[row['Invoice No']]) {
-                    invoices[row['Invoice No']] = {
-                        invoice_id: row['Invoice No'],
-                        id: row['id'],
-                        voucher_date: row['Voucher Date'],
-                        invoice_date: row['Invoice Date'],
-                        customer_name: row['Customer Name'] || 'Unknown',
-                        customer_mobile: row['Customer Mobile'] || '-',
-                        order_id: row['order_id'] || '-',
-                        order_date: row['order_date'] || null,
-                        items: []
-                    };
-                }
-                invoices[row['Invoice No']].items.push({
-                    product_description: row['Product Description'] || '-',
-                    stock_group: row['Stock Group'] || '-',
-                    stock_category: row['Stock Category'] || '-',
-                    rate: row['Rate'] || 0,
-                    quantity: row['Quantity'] || 0,
-                    amount: row['Amount'] || 0,
-                    hsn: row['HSN'] || '-',
-                    gst_percentage: row['GST %'] || 0
-                });
-            });
-
-            return res.status(200).json({
-                message: "All invoices fetched successfully",
-                data: Object.values(invoices)
-            });
-        } else {
-            return res.status(404).json({ message: "No invoices found" });
+        // Add date filtering if parameters are provided
+        const queryParams = [];
+        if (startDate || endDate) {
+            query += ` WHERE `;
+            if (startDate) {
+                const startUnix = moment(startDate, 'YYYY-MM-DD').startOf('day').unix();
+                query += ` i.invoice_date >= ? `;
+                queryParams.push(startUnix);
+            }
+            if (startDate && endDate) {
+                query += ` AND `;
+            }
+            if (endDate) {
+                const endUnix = moment(endDate, 'YYYY-MM-DD').endOf('day').unix();
+                query += ` i.invoice_date <= ? `;
+                queryParams.push(endUnix);
+            }
         }
+
+        query += `
+            ORDER BY
+                i.invoice_date DESC,
+                i.invoice_id COLLATE utf8mb4_0900_ai_ci, 
+                op.product_id COLLATE utf8mb4_0900_ai_ci
+        `;
+
+        // Execute the query with parameters
+        const results = await executeQuery(query, queryParams);
+
+        // Group by invoice to organize the data
+        const invoices = {};
+        results.forEach(row => {
+            if (!invoices[row['Invoice No']]) {
+                invoices[row['Invoice No']] = {
+                    invoice_id: row['Invoice No'],
+                    id: row['id'],
+                    voucher_date: row['Voucher Date'],
+                    invoice_date: row['Invoice Date'],
+                    customer_name: row['Customer Name'] || 'Unknown',
+                    customer_mobile: row['Customer Mobile'] || '-',
+                    order_id: row['order_id'] || '-',
+                    order_date: row['order_date'] || null,
+                    items: []
+                };
+            }
+            invoices[row['Invoice No']].items.push({
+                product_description: row['Product Description'] || '-',
+                stock_group: row['Stock Group'] || '-',
+                stock_category: row['Stock Category'] || '-',
+                rate: row['Rate'] || 0,
+                quantity: row['Quantity'] || 0,
+                amount: row['Amount'] || 0,
+                hsn: row['HSN'] || '-',
+                gst_percentage: row['GST %'] || 0
+            });
+        });
+
+        return res.status(200).json({
+            message: results.length > 0 ? "Invoices fetched successfully" : "No invoices found",
+            data: Object.values(invoices)
+        });
     } catch (error) {
-        console.error("Error fetching all invoices:", error);
+        console.error("Error fetching invoices:", error);
         return res.status(500).json({ message: "Internal server error" });
     }
 });
+
 
 
 router.get("/fetch-total-paid", async (req, res) => {

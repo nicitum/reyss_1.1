@@ -396,10 +396,10 @@ const InvoiceSA = ({ navigation }) => {
                 return;
             }
 
-            const customer = assignedUsers.find((user) => user.cust_id === order.customer_id) || {
+            const customer = assignedUsers.find((user) => user.customer_id === order.customer_id) || {
                 name: "Unknown",
                 phone: "N/A",
-                cust_id: "N/A",
+                customer_id: "N/A",
                 route: "N/A",
             };
 

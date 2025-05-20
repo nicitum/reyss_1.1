@@ -24,7 +24,7 @@ const ProfileModal = ({ visible, onClose, title, content }) => {
 
 const styles = StyleSheet.create({
   modalContainer: {
-    flex: 1,
+    flex: 90,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     paddingBottom: 10,
     borderRadius: 10,
-    width: "85%",
+    width: "100%",
     alignItems: "center",
   },
   modalTitle: {

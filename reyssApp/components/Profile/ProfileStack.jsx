@@ -28,6 +28,8 @@ import OrderAcceptSA from './OrderAcceptSA';
 import LoadingSlipSA from './LoadingSlipSA';
 import CollectCashSA from './CollectCashSA';
 import InvoiceSA from './InvoiceSA';
+import PrivacyPolicyScreen from './PrivacyPolicy';
+import TermsConditionsScreen from './TermsConditions';
 
 const Stack = createStackNavigator();
 
@@ -197,6 +199,19 @@ const ProfileStack = () => {
         component={InvoiceSA}
         options={{ title: 'Invoice Page' }} 
       />
+
+      <Stack.Screen 
+        name="PrivacyPolicy"
+        component={PrivacyPolicyScreen}
+        options={{ title: 'Privacy Policy' }}
+      />
+
+      <Stack.Screen 
+        name="TermsConditions"
+        component={TermsConditionsScreen}
+        options={{ title: 'Terms Conditions' }} 
+      />
+
 
 
 

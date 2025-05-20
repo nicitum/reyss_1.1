@@ -3,8 +3,9 @@
     "name": "Reyss",
     "slug": "reyss",
     "scheme": "reyss-app",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
+    "icon": "./assets/SL_1.jpg",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/SL_1.jpg",
@@ -15,27 +16,30 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/SL_1.jpg",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.reyss.reyssApp",
-      "permissions": ["android.permission.INTERNET"] 
+      "package": "com.reyss.reyssapp",
+      "permissions": ["android.permission.INTERNET"],
+      "config": {
+        "usesPermissions": false
+      }
     },
     "web": {
       "favicon": "./assets/SL_1.jpg"
     },
     "extra": {
       "eas": {
-        "projectId": "ec4e0a74-8569-4875-81c0-80f866ae582c"
+        "projectId": "8dff7e57-31f9-4b60-9668-d16e77f803c5"
       }
     },
-    "owner": "togiwo_1",
+    "owner": "ak_013",
     "plugins": [
       [
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true, 
-            "permissions": ["android.permission.INTERNET"] 
+            "usesCleartextTraffic": true
           }
         }
       ]
